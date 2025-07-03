@@ -1,6 +1,7 @@
 # jssp_rl/train/train_loop.py
 
 import torch
+import time
 from train.episode_runner import run_episode
 from env.jssp_environment import JSSPEnvironment
 
@@ -14,9 +15,12 @@ def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimiz
     epoch_losses = []
 
     for epoch in range(epochs):
+        start_time = time.time()
+        print(f"* Starting Epoch {epoch+1}/{epochs}")
         total_loss = 0
 
-        for batch in dataloader:
+        for batch_idx, batch in enumerate(dataloader):
+            print(f"📦  Batch {batch_idx + 1}/{len(dataloader)}")
             optimizer.zero_grad()
             batch_loss = 0
 
@@ -29,6 +33,7 @@ def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimiz
                 log_probs, values, rewards = run_episode(env, gnn, actor, critic, edge_index, edge_weights)
 
                 _, _, _, makespan = env.step(0)
+                print(f"**  Instance {i+1}/{len(batch['times'])} | Makespan: {makespan:.2f} | Steps: {len(rewards)}")
                 if makespan < best_makespan:
                     best_makespan = makespan
 
@@ -54,11 +59,14 @@ def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimiz
             optimizer.step()
 
             total_loss += batch_loss.item()
+            print(f"*** Batch Loss: {batch_loss.item():.4f}")
 
         episode_makespans.append(best_makespan)
         avg_epoch_loss = total_loss / len(dataloader)
         epoch_losses.append(avg_epoch_loss)
+        end_time = time.time()
 
-        print(f"📘 Epoch {epoch+1}/{epochs} - Loss: {avg_epoch_loss:.4f}")
+        print(f" Epoch {epoch+1}/{epochs} - Loss: {avg_epoch_loss:.4f}")
+        print(f" Epoch {epoch+1} finished in {end_time - start_time:.2f} seconds")
 
     return episode_makespans, epoch_losses
