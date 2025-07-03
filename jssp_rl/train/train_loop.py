@@ -20,7 +20,7 @@ def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimiz
         total_loss = 0
 
         for batch_idx, batch in enumerate(dataloader):
-            print(f"📦  Batch {batch_idx + 1}/{len(dataloader)}")
+            print(f"$  Batch {batch_idx + 1}/{len(dataloader)}")
             optimizer.zero_grad()
             batch_loss = 0
 
@@ -66,7 +66,7 @@ def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimiz
         epoch_losses.append(avg_epoch_loss)
         end_time = time.time()
 
-        print(f" Epoch {epoch+1}/{epochs} - Loss: {avg_epoch_loss:.4f}")
-        print(f" Epoch {epoch+1} finished in {end_time - start_time:.2f} seconds")
+        print(f" # Epoch {epoch+1}/{epochs} - Loss: {avg_epoch_loss:.4f}")
+        print(f" @ Epoch {epoch+1} finished in {end_time - start_time:.2f} seconds")
 
     return episode_makespans, epoch_losses

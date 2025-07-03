@@ -26,5 +26,5 @@ def validate(dataloader, gnn, actor, critic, edge_index, edge_weights):
                 count += 1
 
     avg_makespan = total_makespan / count
-    print(f"🧪 Validation Avg Makespan: {avg_makespan:.2f}")
+    print(f"**** Validation Avg Makespan: {avg_makespan:.2f}")
     return avg_makespan
