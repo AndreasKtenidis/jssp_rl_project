@@ -14,7 +14,11 @@ def validate(dataloader, gnn, actor, critic, edge_index, edge_weights):
 
     with torch.no_grad():
         for batch in dataloader:
-            for instance in batch:
+            for i in range(len(batch['times'])):
+                instance = {
+                    "times": batch['times'][i],
+                    "machines": batch['machines'][i]
+                }
                 env = JSSPEnvironment(instance['times'], instance['machines'])
                 log_probs, values, rewards = run_episode(env, gnn, actor, critic, edge_index, edge_weights, epsilon=0.0)
                 _, _, _, makespan = env.step(0)  # or use env.job_completion_times.max()
