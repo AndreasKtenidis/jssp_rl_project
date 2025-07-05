@@ -1,68 +1,73 @@
 # jssp_rl/cp/cp_solver.py
 
 from ortools.sat.python import cp_model
+from utils.gantt_utils import plot_gantt_chart
+import os
 
-def solve_instance_with_cp(instance):
-    times = instance["times"]
-    machines = instance["machines"]
-    num_jobs, num_tasks = times.shape
+def solve_instance_your_version(times, machines):
+    num_jobs, num_machines = times.shape
     model = cp_model.CpModel()
 
-    all_tasks = {}
-    all_machines = {}
+    jobs_starts, jobs_ends, intervals = {}, {}, {}
 
-    horizon = int(times.sum().item())  # upper bound on makespan
-
+    horizon = int(times.sum().item())
     for job in range(num_jobs):
-        for task in range(num_tasks):
-            machine = int(machines[job][task])
-            duration = int(times[job][task])
-            suffix = f"_{job}_{task}"
-            start = model.NewIntVar(0, horizon, "start" + suffix)
-            end = model.NewIntVar(0, horizon, "end" + suffix)
-            interval = model.NewIntervalVar(start, duration, end, "interval" + suffix)
+        for op in range(num_machines):
+            dur = int(times[job][op])
+            start = model.NewIntVar(0, horizon, f'start_{job}_{op}')
+            end = model.NewIntVar(0, horizon, f'end_{job}_{op}')
+            interval = model.NewIntervalVar(start, dur, end, f'interval_{job}_{op}')
+            jobs_starts[(job, op)] = start
+            jobs_ends[(job, op)] = end
+            intervals[(job, op)] = interval
 
-            all_tasks[(job, task)] = (start, end, interval)
-            all_machines.setdefault(machine, []).append(interval)
-
-    # Machine constraints: no overlap
-    for machine in all_machines:
-        model.AddNoOverlap(all_machines[machine])
-
-    # Job precedence constraints
+    # Precedence
     for job in range(num_jobs):
-        for task in range(num_tasks - 1):
-            model.Add(all_tasks[(job, task + 1)][0] >= all_tasks[(job, task)][1])
+        for op in range(1, num_machines):
+            model.Add(jobs_starts[(job, op)] >= jobs_ends[(job, op - 1)])
 
-    # Makespan objective
+    # Machine no-overlap
+    machine_intervals = {}
+    for job in range(num_jobs):
+        for op in range(num_machines):
+            machine = int(machines[job][op])  # must be 0-based
+            machine_intervals.setdefault(machine, []).append(intervals[(job, op)])
+    for m in machine_intervals:
+        model.AddNoOverlap(machine_intervals[m])
+
     makespan = model.NewIntVar(0, horizon, "makespan")
-    model.AddMaxEquality(
-        makespan,
-        [all_tasks[(job, num_tasks - 1)][1] for job in range(num_jobs)]
-    )
+    model.AddMaxEquality(makespan, [jobs_ends[(j, num_machines - 1)] for j in range(num_jobs)])
     model.Minimize(makespan)
 
-    # Solve
     solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 5.0
     status = solver.Solve(model)
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return solver.ObjectiveValue()
-    else:
-        return None
+        schedule = []
+    for job in range(num_jobs):
+        for op in range(num_machines):
+            start = solver.Value(jobs_starts[(job, op)])
+            end = solver.Value(jobs_ends[(job, op)])
+            machine = int(machines[job][op])
+            schedule.append((job, machine, start, end))
+        return solver.ObjectiveValue(), schedule
+    return None
 
-def run_cp_on_all(instances, limit=None):
-    from tqdm import tqdm
+def run_cp_on_all(instances, save_gantt_dir=None):
     results = []
 
-    if limit:
-        instances = instances[:limit]
+    for i, inst in enumerate(instances):
+        print(f"🧠 Solving CP on instance {i+1}/{len(instances)}")
+        
+        ms, schedule = solve_instance_your_version(inst["times"], inst["machines"])
+        results.append({"instance_id": i, "cp_makespan": ms})
 
-    for i, inst in enumerate(tqdm(instances, desc="Solving with CP")):
-        try:
-            result = solve_instance_with_cp(inst)
-            results.append(result)
-        except Exception as e:
-            print(f"⚠️ CP failed on instance {i}: {e}")
-            results.append(None)
+        # Optional: Save Gantt chart
+        if schedule and save_gantt_dir:
+            save_path = os.path.join(save_gantt_dir, f"gantt_cp_taillard_{i:02d}.html")
+            plot_gantt_chart(schedule, save_path=save_path)
+
     return results
+
+

@@ -1,26 +1,38 @@
-# jssp_rl/train/train_loop.py
-
 import torch
 import time
+import os
 from train.episode_runner import run_episode
 from env.jssp_environment import JSSPEnvironment
 
-def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimizer, epochs=50):
+def train_loop(
+    dataloader,
+    gnn,
+    actor,
+    critic,
+    edge_index,
+    edge_weights,
+    optimizer,
+    epochs=50,
+    start_epoch=0,
+    best_val_makespan=float("inf"),
+    save_path="checkpoints/best_model.pth",
+    validate_fn=None,
+    val_dataloader=None
+):
     gnn.train()
     actor.train()
     critic.train()
-    
+
     episode_makespans = []
-    best_makespan = float("inf")
     epoch_losses = []
 
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, start_epoch + epochs):
         start_time = time.time()
-        print(f"* Starting Epoch {epoch+1}/{epochs}")
+        print(f"* Starting Epoch {epoch+1}/{start_epoch + epochs}")
         total_loss = 0
 
         for batch_idx, batch in enumerate(dataloader):
-            print(f"$  Batch {batch_idx + 1}/{len(dataloader)}")
+            print(f"📦  Batch {batch_idx + 1}/{len(dataloader)}")
             optimizer.zero_grad()
             batch_loss = 0
 
@@ -34,8 +46,6 @@ def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimiz
 
                 _, _, _, makespan = env.step(0)
                 print(f"**  Instance {i+1}/{len(batch['times'])} | Makespan: {makespan:.2f} | Steps: {len(rewards)}")
-                if makespan < best_makespan:
-                    best_makespan = makespan
 
                 returns = []
                 G = 0
@@ -61,12 +71,29 @@ def train_loop(dataloader, gnn, actor, critic, edge_index, edge_weights, optimiz
             total_loss += batch_loss.item()
             print(f"*** Batch Loss: {batch_loss.item():.4f}")
 
-        episode_makespans.append(best_makespan)
         avg_epoch_loss = total_loss / len(dataloader)
         epoch_losses.append(avg_epoch_loss)
         end_time = time.time()
 
-        print(f" # Epoch {epoch+1}/{epochs} - Loss: {avg_epoch_loss:.4f}")
-        print(f" @ Epoch {epoch+1} finished in {end_time - start_time:.2f} seconds")
+        print(f" Epoch {epoch+1}/{start_epoch + epochs} - Loss: {avg_epoch_loss:.4f}")
+        print(f" Epoch {epoch+1} finished in {end_time - start_time:.2f} seconds")
+
+        # === Run validation if function and val_dataloader are provided ===
+        if validate_fn and val_dataloader:
+            val_makespan = validate_fn(val_dataloader, gnn, actor, critic, edge_index, edge_weights)
+
+            # Save best model
+            if val_makespan < best_val_makespan:
+                best_val_makespan = val_makespan
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                torch.save({
+                    'epoch': epoch,
+                    'gnn_state_dict': gnn.state_dict(),
+                    'actor_state_dict': actor.state_dict(),
+                    'critic_state_dict': critic.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'val_makespan': best_val_makespan
+                }, save_path)
+                print(f" Saved new best model at epoch {epoch+1} with val makespan {val_makespan:.2f}")
 
     return episode_makespans, epoch_losses
