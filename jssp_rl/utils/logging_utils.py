@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.express as px
+from pandas import Timestamp, to_timedelta
 
 def plot_rl_convergence(episode_makespans, save_path=None):
     plt.figure(figsize=(10, 6))
@@ -33,7 +34,6 @@ def save_training_log_csv(log_data, filename="training_log.csv"):
 
 
 
-
 def plot_gantt_chart(job_assignments, save_path=None, title="Gantt Chart"):
     """
     Plot an interactive Gantt chart from job assignment list.
@@ -42,12 +42,21 @@ def plot_gantt_chart(job_assignments, save_path=None, title="Gantt Chart"):
     gantt_data = []
 
     for task in job_assignments:
+        start = task["start_time"]
+        end = task["end_time"]
+
+        # Convert floats to timestamps if necessary
+        if isinstance(start, (int, float)):
+            start = Timestamp("2023-01-01") + to_timedelta(start, unit='s')
+        if isinstance(end, (int, float)):
+            end = Timestamp("2023-01-01") + to_timedelta(end, unit='s')
+
         gantt_data.append({
             "Job": f"Job {task['job_id'] + 1}",
             "Machine": f"Machine {task['machine'] + 1}",
-            "Start": task["start_time"],
-            "End": task["end_time"],
-            "Duration": task["end_time"] - task["start_time"],
+            "Start": start,
+            "End": end,
+            "Duration": (end - start).total_seconds(),
         })
 
     df = pd.DataFrame(gantt_data)
@@ -60,8 +69,26 @@ def plot_gantt_chart(job_assignments, save_path=None, title="Gantt Chart"):
     fig.update_yaxes(categoryorder="category descending")
 
     if save_path:
-        fig.write_html(save_path)
+        fig.write_html(save_path, include_plotlyjs='cdn')
         print(f"📊 Gantt chart saved to {save_path}")
 
     fig.show()
 
+def plot_cp_vs_rl_comparison(df, save_path="cp_vs_rl_barplot.png"):
+    
+    plt.figure(figsize=(12, 6))
+    indices = df["instance_id"].astype(str)
+    x = range(len(indices))
+
+    plt.bar(x, df["cp_makespan"], width=0.4, label="CP", align='center')
+    plt.bar([i + 0.4 for i in x], df["rl_makespan"], width=0.4, label="RL", align='center')
+
+    plt.xticks([i + 0.2 for i in x], indices, rotation=45)
+    plt.xlabel("Instance ID")
+    plt.ylabel("Makespan")
+    plt.title("Comparison of CP vs RL on Taillard Instances")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    print(f" Comparison barplot saved to {save_path}")

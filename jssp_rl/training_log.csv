@@ -1,0 +1,2 @@
+epoch,train_loss,train_best_makespan,val_makespans
+1,13896524759.04,1255.0,1591.74

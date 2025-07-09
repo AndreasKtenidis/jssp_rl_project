@@ -9,7 +9,7 @@ def prepare_features(env, edge_index):
     num_machines = env.num_machines
     num_nodes = num_jobs * num_machines
 
-    processing_time = env.times.flatten().clone().detach().to(torch.float32)
+    processing_time = torch.tensor(env.times, dtype=torch.float32).flatten()
 
     remaining_ops = []
     for job_id in range(num_jobs):

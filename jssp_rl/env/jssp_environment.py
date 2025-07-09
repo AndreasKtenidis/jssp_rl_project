@@ -12,8 +12,9 @@ class JSSPEnvironment:
         self.times = times
         self.machines = machines
 
-        self.num_jobs = times.size(0)
-        self.num_machines = times.size(1)
+        self.num_jobs = len(times)
+
+        self.num_machines = len(times[0])
 
         self.reset()
 
@@ -52,6 +53,27 @@ class JSSPEnvironment:
         done = self.state.sum().item() == self.num_jobs * self.num_machines
 
         return self.state, reward, done, makespan
+    
+    def get_available_actions(self):
+        """
+        Return a list of available operation indices (job * num_machines + op)
+        that can be scheduled at the current step.
+        """
+        available = []
+        for job in range(self.num_jobs):
+            for op in range(self.num_machines):
+                if self.state[job, op] == 0:  # not scheduled
+                    if op == 0 or self.state[job, op - 1] == 1:  # first op or previous op done
+                        index = job * self.num_machines + op
+                        available.append(index)
+                    break  # Only first schedulable op per job is considered
+        return available
+
+    def get_makespan(self):
+        """Return the current makespan as the max completion time across all operations."""
+        return self.job_completion_times.max().item()
+
+
     
     def extract_job_assignments(self):
         assignments = []

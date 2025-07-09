@@ -15,7 +15,7 @@ def train_loop(
     epochs=50,
     start_epoch=0,
     best_val_makespan=float("inf"),
-    save_path="checkpoints/best_model.pth",
+    save_path="/home/aktenidis/JSSPprojects/jssp_rl_project/checkpoints/best_model.pth",
     validate_fn=None,
     val_dataloader=None
 ):
@@ -30,9 +30,10 @@ def train_loop(
         start_time = time.time()
         print(f"* Starting Epoch {epoch+1}/{start_epoch + epochs}")
         total_loss = 0
+        epoch_best_makespan = float("inf")
 
         for batch_idx, batch in enumerate(dataloader):
-            print(f"📦  Batch {batch_idx + 1}/{len(dataloader)}")
+            print(f"  Batch {batch_idx + 1}/{len(dataloader)}")
             optimizer.zero_grad()
             batch_loss = 0
 
@@ -46,6 +47,9 @@ def train_loop(
 
                 _, _, _, makespan = env.step(0)
                 print(f"**  Instance {i+1}/{len(batch['times'])} | Makespan: {makespan:.2f} | Steps: {len(rewards)}")
+
+                if makespan < epoch_best_makespan:
+                    epoch_best_makespan = makespan
 
                 returns = []
                 G = 0
@@ -73,8 +77,9 @@ def train_loop(
 
         avg_epoch_loss = total_loss / len(dataloader)
         epoch_losses.append(avg_epoch_loss)
-        end_time = time.time()
+        episode_makespans.append(epoch_best_makespan)
 
+        end_time = time.time()
         print(f" Epoch {epoch+1}/{start_epoch + epochs} - Loss: {avg_epoch_loss:.4f}")
         print(f" Epoch {epoch+1} finished in {end_time - start_time:.2f} seconds")
 
@@ -94,6 +99,6 @@ def train_loop(
                     'optimizer_state_dict': optimizer.state_dict(),
                     'val_makespan': best_val_makespan
                 }, save_path)
-                print(f" Saved new best model at epoch {epoch+1} with val makespan {val_makespan:.2f}")
+                print(f"  Saved new best model at epoch {epoch+1} with val makespan {val_makespan:.2f}")
 
     return episode_makespans, epoch_losses

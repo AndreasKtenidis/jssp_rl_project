@@ -1,8 +1,9 @@
 # jssp_rl/cp/cp_solver.py
 
 from ortools.sat.python import cp_model
-from utils.gantt_utils import plot_gantt_chart
+from utils.logging_utils import plot_gantt_chart
 import os
+import pandas as pd
 
 def solve_instance_your_version(times, machines):
     num_jobs, num_machines = times.shape
@@ -66,7 +67,18 @@ def run_cp_on_all(instances, save_gantt_dir=None):
         # Optional: Save Gantt chart
         if schedule and save_gantt_dir:
             save_path = os.path.join(save_gantt_dir, f"gantt_cp_taillard_{i:02d}.html")
-            plot_gantt_chart(schedule, save_path=save_path)
+            converted = [
+                {
+                    'job_id': job,
+                    'machine': machine,
+                    'start_time': pd.Timestamp("2023-01-01") + pd.to_timedelta(start, unit='s'),
+                    'end_time': pd.Timestamp("2023-01-01") + pd.to_timedelta(end, unit='s')
+                }
+                for (job, machine, start, end) in schedule
+            ]
+
+            plot_gantt_chart(converted, save_path=save_path)
+            
 
     return results
 
