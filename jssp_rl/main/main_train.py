@@ -7,9 +7,9 @@ import pandas as pd
 import os
 from data.dataset import JSSPDataset, split_dataset, get_dataloaders
 from models.gnn import GNNWithAttention
-from models.actor_critic import Actor, Critic
+from jssp_rl_project.jssp_rl.models.actor_critic_a2c import Actor, Critic
 from env.jssp_environment import JSSPEnvironment
-from train.train_loop import train_loop
+from jssp_rl_project.jssp_rl.train.train_loop_a2c import train_loop
 from train.validate import validate
 from cp.main_cp import run_cp_on_taillard
 from utils.logging_utils import (

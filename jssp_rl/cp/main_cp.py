@@ -14,10 +14,10 @@ def run_cp_on_taillard():
         instances = pickle.load(f)
 
     # === Run CP and save CSV ===
-    results = run_cp_on_all(instances, save_gantt_dir=os.path.join(base_dir, "eval"))
+    results = run_cp_on_all(instances, save_gantt_dir=os.path.join(base_dir, "eval","gantt_cp"))
     df = pd.DataFrame(results)
 
-    save_path = os.path.join(base_dir, "cp", "cp_makespansV2.csv")
+    save_path = os.path.join(base_dir, "cp", "cp_makespans.csv")
     df.to_csv(save_path, index=False)
     print(f"✅ CP makespans saved to {save_path}")
 

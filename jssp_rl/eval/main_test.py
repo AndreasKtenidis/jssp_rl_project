@@ -5,7 +5,7 @@ import pickle
 import torch
 import pandas as pd
 from models.gnn import GNNWithAttention 
-from models.actor_critic import Actor
+from jssp_rl_project.jssp_rl.models.actor_critic_a2c import Actor
 from env.jssp_environment import JSSPEnvironment
 from utils.features import prepare_features
 from utils.logging_utils import plot_gantt_chart
@@ -13,7 +13,7 @@ from utils.logging_utils import plot_gantt_chart
 # Set device manually for testing mode
 device = torch.device("cpu")
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device)
+
 
 def load_checkpoint(path):
     if not os.path.exists(path):

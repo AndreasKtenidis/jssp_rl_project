@@ -4,5 +4,4 @@ __pycache__/
 *.png
 checkpoints/
 checkpointsV2/
-*.pkl
 *.log
