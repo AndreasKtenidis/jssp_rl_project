@@ -1,65 +1,98 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.distributions import Categorical
-
+from torch_geometric.data import Data
 
 from utils.buffer import RolloutBuffer
-from config import clip_epsilon, gamma, gae_lambda, lr, ppo_epochs, batch_size ,value_coef,entropy_coef
+from utils.features import prepare_features
+from models.gnn import GNNWithAttention
+from config import clip_epsilon, gamma, gae_lambda, num_epochs, value_coef, entropy_coef
+from env.jssp_environment import JSSPEnvironment
 
 
-def train(env, actor_critic, device):
-    buffer = RolloutBuffer()
-    actor_critic.to(device)
-    optimizer = optim.Adam(actor_critic.parameters(), lr=lr)
+def train(dataloader, actor_critic, optimizer, device):
+    actor_critic.train()
+    all_makespans = []
+    total_loss = 0.0
+    episode_count = 0
 
-    # ----- PHASE 1: COLLECT TRAJECTORIES -----
-    state = env.reset()
-    done = False
+    for batch_idx, batch in enumerate(dataloader):
+        print(f"\n--- Training Batch {batch_idx + 1} ---")
+        batch_loss = 0.0
+        buffer = RolloutBuffer()
 
-    while not done:
-        state_tensor = torch.tensor(state, dtype=torch.float32, device=device).flatten().unsqueeze(0)
-        available_actions = env.get_available_actions()
+        times_batch = batch['times']
+        machines_batch = batch['machines']
+        batch_size = times_batch.shape[0]
 
-        with torch.no_grad():
-            action_logits, value = actor_critic(state_tensor)
-            mask = torch.zeros_like(action_logits)
-            mask[0, available_actions] = 1  # Mask only valid actions
-            masked_logits = action_logits.masked_fill(mask == 0, float('-inf'))
-            dist = Categorical(logits=masked_logits)
-            action = dist.sample()
-            log_prob = dist.log_prob(action)
+        for i in range(batch_size):
+            times = times_batch[i]
+            machines = machines_batch[i]
 
-        next_state, reward, done, _ = env.step(action.item())
+            env = JSSPEnvironment(times, machines)
+            env.reset()
 
-        buffer.add(state_tensor, action, reward, log_prob, value, done)
-        state = next_state
+            done = False
+            episode_reward = 0
+            while not done:
+                edge_index = GNNWithAttention.build_edge_index_with_machine_links(machines)
+                x = prepare_features(env, edge_index, device)
+                data = Data(x=x, edge_index=edge_index.to(device))
 
-    # ----- PHASE 2: COMPUTE ADVANTAGES -----
-    with torch.no_grad():
-        _, last_value = actor_critic(torch.tensor(state, dtype=torch.float32, device=device).flatten().unsqueeze(0))
-    buffer.compute_returns_and_advantages(last_value.squeeze(), gamma, gae_lambda)
+                available = env.get_available_actions()
+                mask = torch.zeros(x.size(0), dtype=torch.bool, device=device)
+                mask[available] = True
 
-    # ----- PHASE 3: POLICY & VALUE UPDATE -----
-    for _ in range(ppo_epochs):
-        for batch in buffer.get_batches(batch_size):
-            states, actions, old_log_probs, returns, advantages = batch
+                with torch.no_grad():
+                    action, log_prob, value = actor_critic.act(data, mask=mask)
 
-            action_logits, values = actor_critic(states)
-            dist = Categorical(logits=action_logits)
-            new_log_probs = dist.log_prob(actions)
-            entropy = dist.entropy().mean()
+                _, reward, done, _ = env.step(action)
+                episode_reward += reward
+                buffer.add(data, action, reward, log_prob, value, done)
 
-            ratio = (new_log_probs - old_log_probs).exp()
-            surrogate1 = ratio * advantages
-            surrogate2 = torch.clamp(ratio, 1 - clip_epsilon, 1 + clip_epsilon) * advantages
-            policy_loss = -torch.min(surrogate1, surrogate2).mean()
-            value_loss = nn.MSELoss()(values.squeeze(), returns)
+            with torch.no_grad():
+                final_edge_index = GNNWithAttention.build_edge_index_with_machine_links(machines)
+                final_x = prepare_features(env, final_edge_index, device)
+                final_data = Data(x=final_x, edge_index=final_edge_index.to(device))
+                _, final_value = actor_critic(final_data)
 
-            loss = policy_loss + value_coef * value_loss - entropy_coef * entropy
+            buffer.compute_returns_and_advantages(final_value.squeeze(), gamma, gae_lambda)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            # Optimize policy
+            for epoch in range(num_epochs):
+                for states, actions, old_log_probs, returns, advantages in buffer.get_batches(batch_size):
+                    action_logits, values = actor_critic(states)
+                    dist = Categorical(logits=action_logits)
+                    new_log_probs = dist.log_prob(actions)
+                    entropy = dist.entropy().mean()
 
-    buffer.clear()
+                    ratio = (new_log_probs - old_log_probs).exp()
+                    surr1 = ratio * advantages
+                    surr2 = torch.clamp(ratio, 1 - clip_epsilon, 1 + clip_epsilon) * advantages
+                    policy_loss = -torch.min(surr1, surr2).mean()
+                    value_loss = nn.MSELoss()(values.squeeze(-1), returns.squeeze(-1))
+                    loss = policy_loss + value_coef * value_loss - entropy_coef * entropy
+
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    batch_loss += loss.item()
+
+            makespan = env.get_makespan()
+            all_makespans.append(makespan)
+            buffer.clear()
+            episode_count += 1
+            print(f"[Episode {episode_count}] Makespan: {makespan:.2f}, Total Reward: {episode_reward:.2f}")
+
+        total_loss += batch_loss
+        avg_batch_loss = batch_loss / batch_size
+        print(f"Finished Batch {batch_idx + 1} | Avg Batch Loss: {avg_batch_loss:.4f}")
+
+    avg_makespan = sum(all_makespans) / len(all_makespans)
+    avg_loss = total_loss / len(all_makespans)
+
+    print(f"\n--- End of Epoch ---")
+    print(f"Average Makespan: {avg_makespan:.2f}")
+    print(f"Average Loss: {avg_loss:.4f}")
+
+    return avg_makespan, avg_loss
