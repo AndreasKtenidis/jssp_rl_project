@@ -20,7 +20,7 @@ from utils.logging_utils import (
 from config import lr, num_epochs, batch_size
 
 # === Device Setup ===
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 # === Base Path Setup ===
 base_dir = os.path.dirname(__file__)
