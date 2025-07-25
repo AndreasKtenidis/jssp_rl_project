@@ -1,45 +1,43 @@
-# train/validate_ppo.py
 import torch
+from torch_geometric.data import Data
 from env.jssp_environment import JSSPEnvironment
-
+from models.gnn import GNNWithAttention
+from utils.features import prepare_features
 
 @torch.no_grad()
-def validate_ppo(dataloader, actor_critic, device=None):
+def validate_ppo(dataloader, actor_critic, device):
     """
-    Greedy argmax rollout with saved policy PPO.
-    Used 10 % of synthetic data to validate makespan
+    Greedy argmax rollout with saved PPO policy.
+    Evaluates on 10% of synthetic data.
     """
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    actor_critic = actor_critic.to(device).eval()
+    actor_critic.eval()
 
     total_makespan, count = 0.0, 0
 
     for batch in dataloader:
         for i in range(len(batch['times'])):
-            times     = batch['times'][i]
-            machines  = batch['machines'][i]
+            times = batch['times'][i]
+            machines = batch['machines'][i]
 
             env = JSSPEnvironment(times, machines, device=device)
-            state = env.reset()
-            done  = False
+            env.reset()
+            done = False
 
             while not done:
-                # tensor‑ify state & pass through network
-                state_tensor = torch.tensor(state, dtype=torch.float32, device=device).flatten().unsqueeze(0)
-                logits, _ = actor_critic(state_tensor)
+                edge_index = GNNWithAttention.build_edge_index_with_machine_links(machines)
+                x = prepare_features(env, edge_index, device)
+                data = Data(x=x, edge_index=edge_index.to(device))
 
-                # mask invalid actions
-                avail = env.get_available_actions()
-                mask  = torch.zeros_like(logits)
-                mask[0, avail] = 1
-                logits = logits.masked_fill(mask == 0, -1e10)
+                available = env.get_available_actions()
+                mask = torch.zeros(x.size(0), dtype=torch.bool, device=device)
+                mask[available] = True
 
-                action = torch.argmax(logits, dim=-1).item()   # Greedy
-                state, _, done, _ = env.step(action)
+                action, _, _ = actor_critic.act(data, mask=mask)  # Greedy because actor_critic.eval()
+                _, _, done, _ = env.step(action)
 
             total_makespan += env.get_makespan()
             count += 1
 
     avg_makespan = total_makespan / count
-    print(f"**** PPO Validation Avg Makespan: {avg_makespan:.2f}")
+    print(f"**** PPO Validation Avg Makespan: {avg_makespan:.2f}")
     return avg_makespan
