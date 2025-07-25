@@ -8,7 +8,7 @@ from utils.features import prepare_features
 from models.gnn import GNNWithAttention
 from config import clip_epsilon, gamma, gae_lambda, num_epochs, value_coef, entropy_coef
 from env.jssp_environment import JSSPEnvironment
-
+import time, psutil
 
 def train(dataloader, actor_critic, optimizer, device):
     actor_critic.train()
@@ -17,6 +17,8 @@ def train(dataloader, actor_critic, optimizer, device):
     episode_count = 0
 
     for batch_idx, batch in enumerate(dataloader):
+        print(f"      ↳ inner step start  {time.strftime('%H:%M:%S')}  "
+             f"cpu {psutil.cpu_percent():.0f}%", flush=True)
         print(f"\n--- Training Batch {batch_idx + 1} ---")
         batch_loss = 0.0
         buffer = RolloutBuffer()
@@ -62,7 +64,13 @@ def train(dataloader, actor_critic, optimizer, device):
             for epoch in range(num_epochs):
                 for states, actions, old_log_probs, returns, advantages in buffer.get_batches(batch_size):
                     action_logits, values = actor_critic(states)
+                    # actions      = actions.to(device)
+                    # old_log_probs = old_log_probs.to(device)
+                    # returns       = returns.to(device)
+                    # advantages    = advantages.to(device)
+                
                     dist = Categorical(logits=action_logits)
+
                     new_log_probs = dist.log_prob(actions)
                     entropy = dist.entropy().mean()
 
