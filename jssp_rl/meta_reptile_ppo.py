@@ -10,9 +10,6 @@ from torch.optim import Adam
 from train.train_ppo import train as ppo_inner_train     
 from train.validate_ppo import validate_ppo            
 from models.actor_critic_ppo import ActorCriticPPO  
-# ————————————————————————————————————————————————————————————————
-# Meta‑training routine
-# ————————————————————————————————————————————————————————————————
 
 def reptile_meta_train(
     task_loader: Iterable,
@@ -70,7 +67,7 @@ def reptile_meta_train(
             theta_initial[name] += (meta_lr / meta_batch_size) * delta_state[name]
         actor_critic.load_state_dict(theta_initial)
 
-        # ——— Optional logging ———
+        # ——— loggs ———
         if val_loader is not None and meta_iter % 50 == 0:
             actor_critic.eval()
             avg_make = validate_ppo(val_loader, actor_critic, device=device)
