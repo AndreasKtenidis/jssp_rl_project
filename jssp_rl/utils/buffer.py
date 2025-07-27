@@ -57,4 +57,13 @@ class RolloutBuffer:
             advantages_batch = torch.stack([self.advantages[i] for i in batch_indices])
 
             yield batch_data, actions_batch, log_probs_batch, returns_batch, advantages_batch
-
+    
+    def merge(self, other):
+        self.states.extend(other.states)
+        self.actions.extend(other.actions)
+        self.rewards.extend(other.rewards)
+        self.log_probs.extend(other.log_probs)
+        self.values.extend(other.values)
+        self.dones.extend(other.dones)
+        self.returns.extend(other.returns)
+        self.advantages.extend(other.advantages)

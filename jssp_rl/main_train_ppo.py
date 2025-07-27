@@ -11,12 +11,14 @@ from models.gnn import GNNWithAttention
 from train.train_ppo import train
 from train.validate_ppo import validate_ppo
 from cp.main_cp import run_cp_on_taillard
+from utils.features import prepare_features
+from torch_geometric.data import Data
 from utils.logging_utils import (
     plot_rl_convergence,
     plot_gantt_chart,
     save_training_log_csv,
     plot_cp_vs_rl_comparison
-)
+) 
 from config import lr, num_epochs, batch_size
 
 # === Device Setup ===
@@ -99,11 +101,15 @@ done = False
 env.reset()
 while not done:
     available = env.get_available_actions()
-    state = torch.tensor(env.state, dtype=torch.float32, device=device).flatten().unsqueeze(0)
-    logits, _ = actor_critic(state)
-    mask = torch.zeros_like(logits)
-    mask[0, available] = 1
-    logits = logits.masked_fill(mask == 0, -1e10)
+    edge_index = GNNWithAttention.build_edge_index_with_machine_links(env.machines)
+    x = prepare_features(env, edge_index, device)
+    data = Data(x=x, edge_index=edge_index.to(device))
+    logits, _ = actor_critic(data)
+
+    mask = torch.zeros(logits.shape[-1], dtype=torch.bool, device=device)
+    mask[available] = True
+    logits = logits.masked_fill(~mask, -1e10)
+
     action = torch.argmax(logits, dim=-1).item()
     _, _, done, _ = env.step(action)
 
