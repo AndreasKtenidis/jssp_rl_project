@@ -32,6 +32,9 @@ def run_episode(env, gnn, actor, critic, edge_index, edge_weights, epsilon=0.1, 
         values.append(value)
         rewards.append(torch.tensor(reward, dtype=torch.float32).to(device))
 
+    rewards = torch.stack(rewards)
+    rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-6)
+
     return log_probs, values, rewards
 
         

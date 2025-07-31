@@ -31,7 +31,7 @@ def train(dataloader, actor_critic, optimizer, device):
             times = times_batch[i]
             machines = machines_batch[i]
 
-            env = JSSPEnvironment(times, machines)
+            env = JSSPEnvironment(times.to(device), machines.to(device), device=device)
             env.reset()
 
             done = False
@@ -57,9 +57,14 @@ def train(dataloader, actor_critic, optimizer, device):
                 final_x = prepare_features(env, final_edge_index, device)
                 final_data = Data(x=final_x, edge_index=final_edge_index.to(device))
                 _, final_value = actor_critic(final_data)
+                print(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
+                
+                final_value = final_value.to(device)
+
 
             buffer.compute_returns_and_advantages(final_value.squeeze(), gamma, gae_lambda)
 
+            
             # Optimize policy
             for epoch in range(num_epochs):
                 for states, actions, old_log_probs, returns, advantages in buffer.get_batches(batch_size):
@@ -69,6 +74,22 @@ def train(dataloader, actor_critic, optimizer, device):
                     # returns       = returns.to(device)
                     # advantages    = advantages.to(device)
                 
+                    if returns.numel() > 1:
+                        returns = (returns - returns.mean()) / (returns.std(unbiased=False) + 1e-6)
+                    else:
+                        returns = torch.zeros_like(returns)
+
+                    returns = returns * 0.1
+
+                    if advantages.numel() > 1:
+                        advantages = (advantages - advantages.mean()) / (advantages.std(unbiased=False) + 1e-6)
+                    else:
+                        advantages = torch.zeros_like(advantages)
+                        
+                    if torch.isnan(action_logits).any():
+                        print("❌ NaNs in action_logits!", action_logits)
+                        raise ValueError("NaNs in logits – check input tensors or network weights.")
+
                     dist = Categorical(logits=action_logits)
 
                     new_log_probs = dist.log_prob(actions)
