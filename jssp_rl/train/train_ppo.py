@@ -11,6 +11,7 @@ from env.jssp_environment import JSSPEnvironment
 import time, psutil
 
 def train(dataloader, actor_critic, optimizer, device):
+    actor_critic.to(device)
     actor_critic.train()
     all_makespans = []
     total_loss = 0.0
@@ -68,11 +69,12 @@ def train(dataloader, actor_critic, optimizer, device):
             # Optimize policy
             for epoch in range(num_epochs):
                 for states, actions, old_log_probs, returns, advantages in buffer.get_batches(batch_size):
+                    actions = actions.to(device)
                     action_logits, values = actor_critic(states)
-                    # actions      = actions.to(device)
-                    # old_log_probs = old_log_probs.to(device)
-                    # returns       = returns.to(device)
-                    # advantages    = advantages.to(device)
+
+                    old_log_probs = old_log_probs.to(device)
+                    returns       = returns.to(device)
+                    advantages    = advantages.to(device)
                 
                     if returns.numel() > 1:
                         returns = (returns - returns.mean()) / (returns.std(unbiased=False) + 1e-6)
