@@ -8,6 +8,8 @@ from utils.features import prepare_features
 from models.gnn import GNNWithAttention
 from env.jssp_environment import JSSPEnvironment
 
+from config import gae_lambda,gamma,num_epochs, clip_epsilon,value_coef,entropy_coef, batch_size
+
 
 def train(dataloader, actor_critic, optimizer, device):
     actor_critic.train()

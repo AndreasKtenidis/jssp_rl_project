@@ -3,7 +3,6 @@
 from ortools.sat.python import cp_model
 from utils.logging_utils import plot_gantt_chart
 import os
-import pandas as pd
 
 def solve_instance_your_version(times, machines):
     num_jobs, num_machines = times.shape
@@ -31,7 +30,7 @@ def solve_instance_your_version(times, machines):
     machine_intervals = {}
     for job in range(num_jobs):
         for op in range(num_machines):
-            machine = int(machines[job][op])  # must be 0-based
+            machine = int(machines[job][op])
             machine_intervals.setdefault(machine, []).append(intervals[(job, op)])
     for m in machine_intervals:
         model.AddNoOverlap(machine_intervals[m])
@@ -52,8 +51,10 @@ def solve_instance_your_version(times, machines):
                 end = solver.Value(jobs_ends[(job, op)])
                 machine = int(machines[job][op])
                 schedule.append((job, machine, start, end))
-            return solver.ObjectiveValue(), schedule
-        return None
+        return solver.ObjectiveValue(), schedule  
+
+    return None, []  
+
 
 def run_cp_on_all(instances, save_gantt_dir=None):
     results = []
