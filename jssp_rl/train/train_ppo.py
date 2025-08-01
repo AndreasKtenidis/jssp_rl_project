@@ -12,6 +12,7 @@ from config import gae_lambda,gamma,num_epochs, clip_epsilon,value_coef,entropy_
 
 
 def train(dataloader, actor_critic, optimizer, device):
+    actor_critic.to(device)
     actor_critic.train()
     all_makespans = []
     global_buffer = RolloutBuffer()
@@ -32,7 +33,7 @@ def train(dataloader, actor_critic, optimizer, device):
             times = times_batch[i]
             machines = machines_batch[i]
 
-            env = JSSPEnvironment(times, machines)
+            env = JSSPEnvironment(times.to(device), machines.to(device), device=device)
             env.reset()
             done = False
             episode_reward = 0
@@ -60,13 +61,24 @@ def train(dataloader, actor_critic, optimizer, device):
                 final_x = prepare_features(env, final_edge_index, device)
                 final_data = Data(x=final_x, edge_index=final_edge_index.to(device))
                 _, final_value = actor_critic(final_data)
+                print(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
+                
+                final_value = final_value.to(device)
+
 
             buffer.compute_returns_and_advantages(final_value.squeeze(), gamma, gae_lambda)
 
+            
             # Optimize policy
             for epoch in range(num_epochs):
                 for states, actions, old_log_probs, returns, advantages in buffer.get_batches(batch_size):
+                    actions = actions.to(device)
                     action_logits, values = actor_critic(states)
+                    # actions      = actions.to(device)
+                    # old_log_probs = old_log_probs.to(device)
+                    # returns       = returns.to(device)
+                    # advantages    = advantages.to(device)
+                
                     dist = Categorical(logits=action_logits)
                     new_log_probs = dist.log_prob(actions)
                     entropy = dist.entropy().mean()

@@ -37,15 +37,15 @@ def reptile_meta_train(
     for meta_iter in range(1, meta_iterations + 1):
         theta_initial = copy.deepcopy(actor_critic.state_dict())
         # Accumulate parameter deltas across tasks
-        delta_state = {k: torch.zeros_like(v) for k, v in theta_initial.items()}
+        delta_state = {k: torch.zeros_like(v, device=device) for k, v in theta_initial.items()}
 
         # ——— Sample a meta‑batch of distinct tasks ———
         tasks = random.sample(task_pool, k=meta_batch_size)
         for task in tasks:
             # Build a loader containing just *this* task 
             task_loader_single = [{
-                "times": task["times"].unsqueeze(0),
-                "machines": task["machines"].unsqueeze(0),
+                "times": task["times"].unsqueeze(0).to(device),
+                "machines": task["machines"].unsqueeze(0).to(device),
             }]
 
             # Clone θ to obtain θ′ for the task
@@ -56,6 +56,7 @@ def reptile_meta_train(
             for _ in range(inner_steps):
                 ppo_inner_train(task_loader_single, task_model, inner_optim, device=device)
 
+            print(f"[{meta_iter}] GPU memory: {torch.cuda.memory_allocated() / 1e6:.1f} MB")
             # Accumulate θ′ − θ into delta_state
             adapted_state = task_model.state_dict()
             for name in delta_state:
