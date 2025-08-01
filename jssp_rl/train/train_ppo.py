@@ -9,8 +9,6 @@ from models.gnn import GNNWithAttention
 from env.jssp_environment import JSSPEnvironment
 
 
-from config import batch_size, num_epochs, gamma, gae_lambda, clip_epsilon, value_coef, entropy_coef
-
 def train(dataloader, actor_critic, optimizer, device):
     actor_critic.train()
     all_makespans = []
@@ -20,6 +18,10 @@ def train(dataloader, actor_critic, optimizer, device):
     total_episodes = 0
 
     for batch_idx, batch in enumerate(dataloader):
+        print(f"\n--- Training Batch {batch_idx + 1} ---")
+        batch_loss = 0.0
+        buffer = RolloutBuffer()
+
         times_batch = batch['times']
         machines_batch = batch['machines']
         current_batch_size = times_batch.shape[0]
@@ -58,35 +60,14 @@ def train(dataloader, actor_critic, optimizer, device):
                 _, final_value = actor_critic(final_data)
 
             buffer.compute_returns_and_advantages(final_value.squeeze(), gamma, gae_lambda)
-            global_buffer.merge(buffer)
 
-            makespan = env.get_makespan()
-            all_makespans.append(makespan)
-            total_episodes += 1
-
-            print(f"[Batch {batch_idx + 1} | Ep {total_episodes}] Makespan: {makespan:.2f} | Total Reward: {episode_reward:.2f}")
-
-    print(f"\n=== [2] PPO Update over {total_episodes} collected episodes ===")
-
-    for epoch in range(num_epochs):
-        epoch_loss = 0.0
-        num_batches = 0
-
-        print(f"\n--- PPO Epoch {epoch + 1}/{num_epochs} ---")
-
-        for batch_idx, (states, actions, old_log_probs, returns, advantages) in enumerate(global_buffer.get_batches(batch_size)):
-            # Move tensors to correct device
-            states = states.to(device)
-            actions = actions.to(device)
-            old_log_probs = old_log_probs.to(device)
-            returns = returns.to(device)
-            advantages = advantages.to(device)
-
-            # Forward pass
-            action_logits, values = actor_critic(states)
-            dist = Categorical(logits=action_logits)
-            new_log_probs = dist.log_prob(actions)
-            entropy = dist.entropy().mean()
+            # Optimize policy
+            for epoch in range(num_epochs):
+                for states, actions, old_log_probs, returns, advantages in buffer.get_batches(batch_size):
+                    action_logits, values = actor_critic(states)
+                    dist = Categorical(logits=action_logits)
+                    new_log_probs = dist.log_prob(actions)
+                    entropy = dist.entropy().mean()
 
             # PPO loss components
             ratio = (new_log_probs - old_log_probs).exp()

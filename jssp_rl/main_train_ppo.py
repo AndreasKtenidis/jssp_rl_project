@@ -3,6 +3,7 @@ import pickle
 import subprocess
 import pandas as pd
 import torch
+import argparse
 
 from data.dataset import JSSPDataset, split_dataset, get_dataloaders
 from env.jssp_environment import JSSPEnvironment
@@ -21,8 +22,13 @@ from utils.logging_utils import (
 ) 
 from config import lr, num_epochs, batch_size
 
-# === Device Setup ===
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# # ── CLI ─────────────────────────────────────────────────────────────
+# parser = argparse.ArgumentParser()
+# parser.add_argument("--init", type=str, default=None,
+#                     help="Path to a state-dict to warm-start the actor-critic")
+# args = parser.parse_args()
+
+device = torch.device("cpu")
 
 # === Base Path Setup ===
 base_dir = os.path.dirname(__file__)
@@ -56,6 +62,16 @@ actor_critic = ActorCriticPPO(
     critic_hidden_dim=64,
     action_dim=15 * 15
 ).to(device)
+
+
+# # === Warm-start from Reptile θ★  ===================================
+# if args.init is not None:
+#     print(f"🔄 Loading warm-start weights from {args.init}")
+#     state = torch.load(args.init, map_location=device)
+#     actor_critic.load_state_dict(state, strict=True)
+# else:
+#     print("⚠️  No warm-start supplied: training will start from scratch")
+
 optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 
 # === Training ===
