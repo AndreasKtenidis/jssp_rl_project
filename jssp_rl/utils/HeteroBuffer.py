@@ -1,23 +1,24 @@
 import torch
-from torch_geometric.data import Batch, Data
+
+from torch_geometric.data import Batch as HeteroBatch
 
 class RolloutBuffer:
     def __init__(self):
-        self.states = []
-        self.actions = []
-        self.rewards = []
-        self.log_probs = []
-        self.values = []
-        self.dones = []
+        self.states = []        # List of HeteroData objects
+        self.actions = []       # List of action indices
+        self.rewards = []       # List of rewards
+        self.log_probs = []     # List of log_probs
+        self.values = []        # List of state values
+        self.dones = []         # List of done flags
 
-        self.returns = []
-        self.advantages = []
+        self.returns = []       # GAE returns
+        self.advantages = []    # GAE advantages
 
     def clear(self):
         self.__init__()
 
     def add(self, state, action, reward, log_prob, value, done):
-        self.states.append(state)  
+        self.states.append(state)
         self.actions.append(action)
         self.rewards.append(reward)
         self.log_probs.append(log_prob)
@@ -45,14 +46,11 @@ class RolloutBuffer:
             end = start + batch_size
             batch_indices = indices[start:end]
 
-            data_list = [
-                Data(x=self.states[i]['x'], edge_index=self.states[i]['edge_index'])
-                for i in batch_indices
-            ]
-            batch_data = Batch.from_data_list(data_list)
+            data_list = [self.states[i] for i in batch_indices]
+            batch_data = HeteroBatch.from_data_list(data_list)  
 
             actions_batch = torch.tensor([self.actions[i] for i in batch_indices], dtype=torch.long)
-            log_probs_batch = torch.tensor([self.log_probs[i] for i in batch_indices], dtype=torch.float32)
+            log_probs_batch = torch.stack([self.log_probs[i] for i in batch_indices])
             returns_batch = torch.stack([self.returns[i] for i in batch_indices])
             advantages_batch = torch.stack([self.advantages[i] for i in batch_indices])
 

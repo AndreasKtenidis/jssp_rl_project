@@ -2,17 +2,17 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 from torch_geometric.data import Data
+import gc
 
 from utils.buffer import RolloutBuffer
 from utils.features import prepare_features
 from models.gnn import GNNWithAttention
 from env.jssp_environment import JSSPEnvironment
 
-from config import gae_lambda,gamma,num_epochs, clip_epsilon,value_coef,entropy_coef, batch_size
 
+from config import batch_size, epochs, gamma, gae_lambda, clip_epsilon, value_coef, entropy_coef
 
 def train(dataloader, actor_critic, optimizer, device):
-    actor_critic.to(device)
     actor_critic.train()
     all_makespans = []
     global_buffer = RolloutBuffer()
@@ -21,10 +21,6 @@ def train(dataloader, actor_critic, optimizer, device):
     total_episodes = 0
 
     for batch_idx, batch in enumerate(dataloader):
-        print(f"\n--- Training Batch {batch_idx + 1} ---")
-        batch_loss = 0.0
-        buffer = RolloutBuffer()
-
         times_batch = batch['times']
         machines_batch = batch['machines']
         current_batch_size = times_batch.shape[0]
@@ -33,7 +29,7 @@ def train(dataloader, actor_critic, optimizer, device):
             times = times_batch[i]
             machines = machines_batch[i]
 
-            env = JSSPEnvironment(times.to(device), machines.to(device), device=device)
+            env = JSSPEnvironment(times, machines)
             env.reset()
             done = False
             episode_reward = 0
@@ -61,27 +57,37 @@ def train(dataloader, actor_critic, optimizer, device):
                 final_x = prepare_features(env, final_edge_index, device)
                 final_data = Data(x=final_x, edge_index=final_edge_index.to(device))
                 _, final_value = actor_critic(final_data)
-                print(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
-                
-                final_value = final_value.to(device)
-
 
             buffer.compute_returns_and_advantages(final_value.squeeze(), gamma, gae_lambda)
+            global_buffer.merge(buffer)
 
-            
-            # Optimize policy
-            for epoch in range(num_epochs):
-                for states, actions, old_log_probs, returns, advantages in buffer.get_batches(batch_size):
-                    actions = actions.to(device)
-                    action_logits, values = actor_critic(states)
-                    # actions      = actions.to(device)
-                    # old_log_probs = old_log_probs.to(device)
-                    # returns       = returns.to(device)
-                    # advantages    = advantages.to(device)
-                
-                    dist = Categorical(logits=action_logits)
-                    new_log_probs = dist.log_prob(actions)
-                    entropy = dist.entropy().mean()
+            makespan = env.get_makespan()
+            all_makespans.append(makespan)
+            total_episodes += 1
+
+            print(f"[Batch {batch_idx + 1} | Ep {total_episodes}] Makespan: {makespan:.2f} | Total Reward: {episode_reward:.2f}")
+
+    print(f"\n=== [2] PPO Update over {total_episodes} collected episodes ===")
+
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+        num_batches = 0
+
+        print(f"\n--- PPO Epoch {epoch + 1}/{epochs} ---")
+
+        for batch_idx, (states, actions, old_log_probs, returns, advantages) in enumerate(global_buffer.get_batches(batch_size)):
+            # Move tensors to correct device
+            states = states.to(device)
+            actions = actions.to(device)
+            old_log_probs = old_log_probs.to(device)
+            returns = returns.to(device)
+            advantages = advantages.to(device)
+
+            # Forward pass
+            action_logits, values = actor_critic(states)
+            dist = Categorical(logits=action_logits)
+            new_log_probs = dist.log_prob(actions)
+            entropy = dist.entropy().mean()
 
             # PPO loss components
             ratio = (new_log_probs - old_log_probs).exp()
@@ -117,5 +123,8 @@ def train(dataloader, actor_critic, optimizer, device):
     print(f"Average Makespan: {avg_makespan:.2f}")
 
     global_buffer.clear()
+    del global_buffer
+    gc.collect()
+    torch.cuda.empty_cache()
     return avg_makespan, avg_epoch_loss
 

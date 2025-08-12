@@ -1,7 +1,7 @@
 import torch
 
 def select_top_k_actions(env, top_k=5, device=None):
-    device = device # or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     num_ops = env.num_jobs * env.num_machines
     valid_mask = torch.zeros(num_ops, dtype=torch.bool, device=device)
     priorities = []
@@ -11,7 +11,7 @@ def select_top_k_actions(env, top_k=5, device=None):
             idx = job_id * env.num_machines + op_idx
             if env.state[job_id, op_idx] == 0 and (op_idx == 0 or env.state[job_id, op_idx - 1] == 1):
                 est = env.job_completion_times[job_id, op_idx - 1] if op_idx > 0 else 0
-                pt = env.times[job_id, op_idx].item()
+                pt = env.times[job_id, op_idx]
 
                 valid_mask[idx] = 1
                 priorities.append((est, -pt, idx))

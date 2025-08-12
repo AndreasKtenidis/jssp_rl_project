@@ -106,23 +106,67 @@ def plot_gantt_chart(job_assignments, save_path=None, title="Gantt Chart ", show
 
 
 def plot_cp_vs_rl_comparison(df, save_path="cp_vs_rl_barplot.png"):
-    plt.figure(figsize=(12, 6))
-    indices = df["instance_id"].astype(str)
-    x = range(len(indices))
+    """
+    Bar chart comparing CP vs RL on Taillard.
+    Supports:
+      - df['cp_makespan']                  (required)
+      - df['rl_makespan'] or df['rl_makespan_greedy'] (greedy RL; one of these required)
+      - df['rl_makespan_best_of_<K>']      (optional; auto-detected)
+    """
+    import os
+    import matplotlib.pyplot as plt
+    import numpy as np
 
-    plt.bar(x, df["cp_makespan"], width=0.4, label="CP", align='center')
-    plt.bar([i + 0.4 for i in x], df["rl_makespan"], width=0.4, label="RL", align='center')
+    if "cp_makespan" not in df.columns:
+        raise ValueError("DataFrame must contain 'cp_makespan'.")
 
-    plt.xticks([i + 0.2 for i in x], indices, rotation=45)
+    # Accept either legacy 'rl_makespan' or new 'rl_makespan_greedy'
+    greedy_col = "rl_makespan_greedy" if "rl_makespan_greedy" in df.columns else "rl_makespan"
+    if greedy_col not in df.columns:
+        raise ValueError("DataFrame must contain 'rl_makespan' or 'rl_makespan_greedy'.")
+
+    # Auto-detect best-of-K column if present (e.g., 'rl_makespan_best_of_10')
+    best_cols = [c for c in df.columns if c.startswith("rl_makespan_best_of_")]
+    best_col = best_cols[0] if best_cols else None
+
+    indices = df["instance_id"].astype(str).tolist()
+    n = len(indices)
+    x = np.arange(n)
+
+    # Bar width and offsets for up to 3 series
+    width = 0.28 if best_col else 0.4
+    offsets = (-width, 0, width) if best_col else (-width/2, width/2)
+
+    plt.figure(figsize=(max(12, n * 0.5), 6))
+
+    # CP bars
+    plt.bar(x + (offsets[0] if best_col else offsets[0]), df["cp_makespan"], width=width, label="CP")
+
+    # Greedy RL bars
+    plt.bar(x + (offsets[1] if best_col else offsets[1]), df[greedy_col], width=width,
+            label="RL (greedy)")
+
+    # Best-of-K RL bars (optional)
+    if best_col:
+        k = best_col.split("_")[-1]
+        plt.bar(x + offsets[2], df[best_col], width=width, label=f"RL (best-of-{k})")
+
+    # Axis formatting
+    plt.xticks(x, indices, rotation=45, ha="right")
     plt.xlabel("Instance ID")
     plt.ylabel("Makespan")
-    plt.title("Comparison of CP vs RL on Taillard Instances")
+    title = "CP vs RL (Greedy"
+    title += f" & Best-of-{k}" if best_col else ""
+    title += ") on Taillard Instances"
+    plt.title(title)
     plt.legend()
     plt.tight_layout()
 
-    
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-    plt.savefig(save_path, dpi=300)
+    # Ensure output dir and save
+    outdir = os.path.dirname(save_path)
+    if outdir:
+        os.makedirs(outdir, exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"✅ Comparison barplot saved to {save_path}")
+

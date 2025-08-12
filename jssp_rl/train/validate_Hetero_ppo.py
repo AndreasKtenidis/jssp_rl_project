@@ -1,11 +1,7 @@
-# train/validate_ppo.py  (GNN / homogeneous version)
-
+# train/validate_Hetero_ppo.py
 import torch
-from torch.distributions import Categorical
-from torch_geometric.data import Data
 from env.jssp_environment import JSSPEnvironment
-from models.gnn import GNNWithAttention
-from utils.features import prepare_features
+from utils.Heterofeatures import prepare_features
 from utils.action_masking import select_top_k_actions
 
 @torch.no_grad()
@@ -14,14 +10,14 @@ def validate_ppo(
     actor_critic,
     device,
     *,
-    limit_instances: int = 50,   # cap validation size
-    best_of_k: int = 1,          # >1 to try sampling K times and take best
-    progress_every: int = 10     # print progress every N instances
+    limit_instances: int = 50,     # cap validation size
+    best_of_k: int = 1,            # set >1 to try sampling K times and take best
+    progress_every: int = 10       # print progress every N instances
 ):
     actor_critic.eval()
     total_makespan, count = 0.0, 0
 
-    # Flatten dataloader into single instances
+    # Convert to a flat iterable of instances
     def iter_instances():
         for batch in dataloader:
             T = batch["times"]
@@ -39,17 +35,18 @@ def validate_ppo(
         num_jobs, num_machines = env.num_jobs, env.num_machines
         max_steps = num_jobs * num_machines + 50  # hard cap
 
-        def rollout(sample: bool = False):
+        def rollout(sample=False):
             env.reset()
             steps = 0
             while True:
                 if steps > max_steps:
-                    return float("inf")   # guard against infinite loops
+                    # Hard stop: treat as bad rollout
+                    return float("inf")
                 steps += 1
 
                 available = env.get_available_actions()
                 if not available:
-                    # Fallback: heuristic pick; if still none, bail
+                    # Fallback: try top-k heuristic; if still none, abort
                     topk, _ = select_top_k_actions(env, top_k=1, device=device)
                     if topk.numel() == 0:
                         return float("inf")
@@ -59,11 +56,7 @@ def validate_ppo(
                         return env.get_makespan()
                     continue
 
-                # Build features/graph (GNN version)
-                edge_index = GNNWithAttention.build_edge_index_with_machine_links(env.machines).to(device)
-                x = prepare_features(env, edge_index, device)  # [num_ops, feat]
-                data = Data(x=x, edge_index=edge_index)
-
+                data = prepare_features(env, device)
                 logits, _ = actor_critic(data)
 
                 mask = torch.zeros(len(logits), dtype=torch.bool, device=device)
@@ -71,14 +64,14 @@ def validate_ppo(
                 logits = logits.masked_fill(~mask, -1e10)
 
                 if sample and best_of_k > 1:
-                    dist = Categorical(logits=logits)
+                    dist = torch.distributions.Categorical(logits=logits)
                     action = dist.sample().item()
                 else:
                     action = torch.argmax(logits).item()
 
                 _, _, done, _ = env.step(action)
                 if done:
-                    return env.get_makespanspan()  # or env.get_makespan() if that's your method name
+                    return env.get_makespan()
 
         if best_of_k > 1:
             best = float("inf")
