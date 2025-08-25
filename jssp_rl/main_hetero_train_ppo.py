@@ -161,7 +161,7 @@ run_cp_on_taillard()
 
 # === Run RL on Taillard (Hetero) ===
 print("\nRunning RL on Taillard benchmark instances (HeteroGIN)...")
-subprocess.call([sys.executable, "-m", "eval.main_test_hetero_ppo"], cwd=base_dir)
+subprocess.call([sys.executable, "-m", "eval.main_test_Ηetero_ppo"], cwd=base_dir)
 
 # === Merge and Compare CP vs PPO vs Reptile ===
 cp_csv = os.path.join(base_dir, "cp", "cp_makespans.csv")
@@ -170,38 +170,83 @@ reptile_csv = os.path.join(base_dir, "eval", "taillard_reptile_results.csv")
 merged_csv = os.path.join(comparison_dir, "taillard_comparison.csv")
 plot_path = os.path.join(plot_dir, "cp_vs_rl_barplot.png")
 
-cp_df = pd.read_csv(cp_csv)
-ppo_df = pd.read_csv(ppo_csv)
+# Load & de-duplicate on instance_id (keep last)
+cp_df = pd.read_csv(cp_csv).drop_duplicates(subset=["instance_id"], keep="last")
+ppo_df = pd.read_csv(ppo_csv).drop_duplicates(subset=["instance_id"], keep="last")
 
-# Backward compatibility: find the greedy and best-of-K columns if present
+# Detect PPO columns (greedy & best-of-K)
 greedy_col = "rl_makespan_greedy" if "rl_makespan_greedy" in ppo_df.columns else "rl_makespan"
 best_cols = [c for c in ppo_df.columns if c.startswith("rl_makespan_best_of_")]
 best_col = best_cols[0] if best_cols else greedy_col
 
-merged = pd.merge(cp_df, ppo_df[["instance_id", greedy_col, best_col]], on="instance_id")
+# Keep only the needed columns
+ppo_keep = ["instance_id", greedy_col, best_col] if best_col != greedy_col else ["instance_id", greedy_col]
 
-# If reptile results exist, merge them too (same column detection)
+assert cp_df["instance_id"].is_unique, "CP has duplicate instance_id"
+assert ppo_df["instance_id"].is_unique, "PPO has duplicate instance_id"
+
+# Merge CP x PPO, assert one-to-one
+merged = pd.merge(
+    cp_df[["instance_id", "cp_makespan"]],
+    ppo_df[ppo_keep],
+    on="instance_id",
+    how="inner",
+    validate="one_to_one",
+)
+
+# Optionally merge Reptile results
 if os.path.exists(reptile_csv):
-    reptile_df = pd.read_csv(reptile_csv)
+    reptile_df = pd.read_csv(reptile_csv).drop_duplicates(subset=["instance_id"], keep="last")
+
     rep_greedy = "rl_makespan_greedy" if "rl_makespan_greedy" in reptile_df.columns else "rl_makespan"
     rep_best_cols = [c for c in reptile_df.columns if c.startswith("rl_makespan_best_of_")]
     rep_best = rep_best_cols[0] if rep_best_cols else rep_greedy
+
+    # Rename to avoid column-name collisions
+    reptile_renamed = reptile_df.rename(columns={
+        rep_greedy: "rl_makespan_greedy_reptile",
+        rep_best:   "rl_makespan_best_reptile",
+    })
+
+    rep_keep = ["instance_id", "rl_makespan_greedy_reptile"]
+    if rep_best != rep_greedy:
+        rep_keep.append("rl_makespan_best_reptile")
+
     merged = pd.merge(
         merged,
-        reptile_df[["instance_id", rep_greedy, rep_best]],
+        reptile_renamed[rep_keep],
         on="instance_id",
-        suffixes=("", "_reptile"),
+        how="left",
+        validate="one_to_one",
     )
-    # Optional: compute gaps for reptile
-    merged["gap_reptile_greedy"] = (merged[f"{rep_greedy}_reptile"] - merged["cp_makespan"]) / merged["cp_makespan"]
-    merged["gap_reptile_best"] = (merged[f"{rep_best}_reptile"] - merged["cp_makespan"]) / merged["cp_makespan"]
 
-# Compute gaps for PPO (greedy & best)
-merged["gap_greedy"] = (merged[greedy_col] - merged["cp_makespan"]) / merged["cp_makespan"]
-merged["gap_best"]   = (merged[best_col]   - merged["cp_makespan"]) / merged["cp_makespan"]
+# Ensure columns unique (defensive)
+merged = merged.loc[:, ~merged.columns.duplicated()].copy()
+
+# Compute gaps using numpy (no alignment/reindex)
+cp = merged["cp_makespan"].to_numpy()
+
+# PPO gaps
+g = merged[greedy_col].to_numpy()
+merged["gap_greedy"] = (g - cp) / cp
+
+if best_col != greedy_col:
+    b = merged[best_col].to_numpy()
+    merged["gap_best"] = (b - cp) / cp
+else:
+    merged["gap_best"] = merged["gap_greedy"]
+
+# Reptile gaps (if present)
+if "rl_makespan_greedy_reptile" in merged.columns:
+    gr = merged["rl_makespan_greedy_reptile"].to_numpy()
+    merged["gap_reptile_greedy"] = (gr - cp) / cp
+if "rl_makespan_best_reptile" in merged.columns:
+    br = merged["rl_makespan_best_reptile"].to_numpy()
+    merged["gap_reptile_best"] = (br - cp) / cp
 
 merged.to_csv(merged_csv, index=False)
 print(f"✅ Saved merged CP vs PPO vs Reptile comparison to {merged_csv}")
+
 
 # Plot (function auto-detects best-of-K if present)
 plot_cp_vs_rl_comparison(merged.rename(columns={greedy_col: "rl_makespan", best_col: best_col}),
