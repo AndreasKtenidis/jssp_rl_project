@@ -28,31 +28,56 @@ class JSSPEnvironment:
         return self.state
 
     def step(self, action):
+        # --- 0) Bounds guard ---
+        if not isinstance(action, int):
+            action = int(action)
+        if action < 0 or action >= self.num_jobs * self.num_machines:
+            # invalid flat index
+            return self.state, -5.0, False, float(self.job_completion_times.max().item())
+
+        # --- 1) Decode flat action ---
         job_id = action // self.num_machines
         op_idx = action % self.num_machines
-        machine_id = self.machines[job_id, op_idx].item()
-        duration = self.times[job_id, op_idx].item()
 
+        machine_id = int(self.machines[job_id, op_idx].item())
+        duration   = float(self.times[job_id, op_idx].item())
+
+        # --- 2) Invalid move guards ---
+        # (a) already scheduled op
+        if self.state[job_id, op_idx] == 1:
+            return self.state, -5.0, False, float(self.job_completion_times.max().item())
+
+        # (b) predecessor not finished yet
         if op_idx > 0 and self.state[job_id, op_idx - 1] == 0:
-            return self.state, -1e6, False, 0  # Invalid move
+            return self.state, -5.0, False, float(self.job_completion_times.max().item())
 
-        prev_end = self.job_completion_times[job_id, op_idx - 1] if op_idx > 0 else 0
-        machine_free = self.machine_available_times[machine_id]
+        # --- 3) previous makespan (before scheduling this op) ---
+        prev_makespan = float(self.job_completion_times.max().item())
 
-        start_time = max(prev_end, machine_free)
-        end_time = start_time + duration
+        # --- 4) Feasible start (job precedence & machine availability) ---
+        prev_end   = float(self.job_completion_times[job_id, op_idx - 1].item()) if op_idx > 0 else 0.0
+        mach_free  = float(self.machine_available_times[machine_id].item() if hasattr(self.machine_available_times, "ndim") else self.machine_available_times[machine_id])
+        start_time = max(prev_end, mach_free)
+        end_time   = start_time + duration
 
-        self.job_start_times[job_id, op_idx] = start_time
+        # --- 5) Apply schedule ---
+        self.job_start_times[job_id, op_idx]      = start_time
         self.job_completion_times[job_id, op_idx] = end_time
-        self.machine_available_times[machine_id] = end_time
+        self.machine_available_times[machine_id]  = end_time
         self.state[job_id, op_idx] = 1
 
-        makespan = self.job_completion_times.max().item()
-        reward = -makespan
+        # --- 6) New makespan & reward ---
+        makespan = float(self.job_completion_times.max().item())
+        reward   = -(makespan - prev_makespan)  # ≤ 0.0
 
-        done = self.state.sum().item() == self.num_jobs * self.num_machines
+        # --- 7) Done? ---
+        done = bool(self.state.sum().item() == self.num_jobs * self.num_machines)
 
-        return self.state, reward, done, makespan
+        # Keep the signature identical: (state, reward, done, makespan)
+        return self.state, float(reward), done, float(makespan)
+
+
+
 
     def get_available_actions(self):
         available = []

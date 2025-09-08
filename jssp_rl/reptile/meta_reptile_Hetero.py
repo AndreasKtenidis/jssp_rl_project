@@ -24,16 +24,15 @@ def reptile_meta_train(
     meta_batch_size: int = 8,
     inner_steps: int = 1,
     inner_lr: float = 3e-4,
-    meta_lr: float = 1e-2,
+    meta_lr: float = 3e-3,
     device: Optional[torch.device] = None,
     val_loader: Optional[Iterable] = None,
     save_path: str = "saved/meta_best.pth",
     # optional knobs to keep inner PPO "light"
-    inner_update_batch_size_size: int = 8,
-    inner_switch_epoch: int = 1,
-    validate_every: int = 50,
+    inner_update_batch_size: int = 16,
+    validate_every: int = 10,
     # logging
-    log_csv_path: str = "outputs/logs/meta_reptile_hetero_log.csv",
+    log_csv_path: str = "/home/aktenidis/JSSPprojects/jssp_rl_project/jssp_rl/outputs/logs/meta_reptile_hetero_log.csv",
 ) -> ActorCriticPPO:
     """
     Reptile meta-training over PPO with HeteroGIN + CSV logging.
@@ -111,8 +110,8 @@ def reptile_meta_train(
                     task_model,
                     inner_optim,
                     device=device,
-                    switch_epoch=inner_switch_epoch,
-                    update_batch_size_size=inner_update_batch_size_size,
+                    update_batch_size_size=inner_update_batch_size,
+                    kl_threshold=0.25
                 )
                 # Collect per-inner-step metrics
                 if ep_loss is not None:
@@ -155,11 +154,14 @@ def reptile_meta_train(
             print("\n🔎 Running validation...")
             actor_critic.eval()
             val_makespan = float(validate_ppo(
-                val_loader, actor_critic, device=device,
-                limit_instances=50,      # <- key
-                best_of_k=1,
-                progress_every=10
-            ))
+            val_loader, actor_critic, device=device,
+            limit_instances=50,
+            best_of_k=10,
+            progress_every=10,
+            report_greedy=False,   
+            return_both=False      
+        ))
+
             actor_critic.train()
 
             print(f"[Meta-Iter {meta_iter:04d}] Validation Avg Makespan: {val_makespan:.2f}")

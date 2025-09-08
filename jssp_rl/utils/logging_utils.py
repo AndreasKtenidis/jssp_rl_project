@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.patches as patches
 import matplotlib.colors as mcolors
 import os
-import numpy as np
 
 
 
@@ -114,7 +113,9 @@ def plot_cp_vs_rl_comparison(df, save_path="cp_vs_rl_barplot.png"):
       - df['rl_makespan'] or df['rl_makespan_greedy'] (greedy RL; one of these required)
       - df['rl_makespan_best_of_<K>']      (optional; auto-detected)
     """
-    
+    import os
+    import matplotlib.pyplot as plt
+    import numpy as np
 
     if "cp_makespan" not in df.columns:
         raise ValueError("DataFrame must contain 'cp_makespan'.")
@@ -124,7 +125,7 @@ def plot_cp_vs_rl_comparison(df, save_path="cp_vs_rl_barplot.png"):
     if greedy_col not in df.columns:
         raise ValueError("DataFrame must contain 'rl_makespan' or 'rl_makespan_greedy'.")
 
-    # Auto-detect best-of-K column if present 
+    # Auto-detect best-of-K column if present (e.g., 'rl_makespan_best_of_10')
     best_cols = [c for c in df.columns if c.startswith("rl_makespan_best_of_")]
     best_col = best_cols[0] if best_cols else None
 

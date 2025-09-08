@@ -50,30 +50,54 @@ class HeteroGIN(nn.Module):
         return data
 
     @staticmethod
-    def build_edge_index_dict(machines):
+    def build_edge_index_dict(machines: torch.Tensor):
+        """
+        Build edge indices using the same row-major op id:
+            k = j * num_machines + o
+        Returns a dict with keys:
+          ('op','job','op') and ('op','machine','op')
+        """
+        # ensure CPU for index building; caller may .to(device) later
+        machines = machines.detach().cpu()
         num_jobs, num_machines = machines.shape
-        job_edges = []
-        machine_to_ops = {}
 
+        # --- job-chain edges (bidirectional) ---
+        job_edges = []
+        for j in range(num_jobs):
+            for o in range(num_machines - 1):
+                k  = j * num_machines + o
+                kn = j * num_machines + (o + 1)
+                job_edges.append([k, kn])   # forward
+                job_edges.append([kn, k])   # backward
+
+        if len(job_edges) > 0:
+            job_edge_index = torch.tensor(job_edges, dtype=torch.long).t().contiguous()
+        else:
+            job_edge_index = torch.empty(2, 0, dtype=torch.long)
+
+        # --- machine clique edges (bidirectional) ---
+        machine_to_ops = {}
         for j in range(num_jobs):
             for o in range(num_machines):
-                curr = j * num_machines + o
-                if o < num_machines - 1:
-                    nxt = j * num_machines + o + 1
-                    job_edges.append([curr, nxt])
-
-                machine = int(machines[j, o])
-                machine_to_ops.setdefault(machine, []).append(curr)
+                k = j * num_machines + o
+                m = int(machines[j, o].item())
+                machine_to_ops.setdefault(m, []).append(k)
 
         machine_edges = []
         for ops in machine_to_ops.values():
-            for i in range(len(ops)):
-                for j in range(i + 1, len(ops)):
-                    machine_edges.append([ops[i], ops[j]])
-                    machine_edges.append([ops[j], ops[i]])
+            L = len(ops)
+            # fully-connected directed pairs i≠j
+            for i in range(L):
+                ki = ops[i]
+                for j in range(i + 1, L):
+                    kj = ops[j]
+                    machine_edges.append([ki, kj])
+                    machine_edges.append([kj, ki])
 
-        job_edge_index = torch.tensor(job_edges, dtype=torch.long).t().contiguous()
-        machine_edge_index = torch.tensor(machine_edges, dtype=torch.long).t().contiguous()
+        if len(machine_edges) > 0:
+            machine_edge_index = torch.tensor(machine_edges, dtype=torch.long).t().contiguous()
+        else:
+            machine_edge_index = torch.empty(2, 0, dtype=torch.long)
 
         return {
             ('op', 'job', 'op'): job_edge_index,

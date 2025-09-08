@@ -39,7 +39,7 @@ for d in [log_dir, gantt_dir, plot_dir, model_dir, comparison_dir]:
     os.makedirs(d, exist_ok=True)
 
 # === Load Dataset ===
-with open(os.path.join(base_dir, "saved", "Synthetic_instances_15x15_5000.pkl"), "rb") as f:
+with open(os.path.join(base_dir, "saved", "Synthetic_instances_15x15_505.pkl"), "rb") as f:
     instances = pickle.load(f)
 
 dataset = JSSPDataset(instances)
@@ -62,15 +62,14 @@ actor_critic = reptile_meta_train(
     task_loader=dataloaders['train'],
     actor_critic=actor_critic,
     val_loader=dataloaders['val'],
-    meta_iterations=300,
+    meta_iterations=100,
     meta_batch_size=16,
-    inner_steps=3,
-    inner_lr=2e-4,
-    meta_lr=2e-3,
+    inner_steps=1,
+    inner_lr=1e-4,
+    meta_lr=1e-3,
     device=device,
     save_path=meta_ckpt_path,
-    inner_update_batch_size_size=8,
-    inner_switch_epoch=1,
+    inner_update_batch_size=16,
     validate_every=10,
 )
 print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
@@ -92,12 +91,14 @@ for epoch in range(num_epochs):
 
     train_dataset = dataset.get_split("train")
     train_makespan, loss = train(
-        train_dataset, actor_critic, optimizer, device=device, update_batch_size_size=32
+        train_dataset, actor_critic, optimizer, device=device, update_batch_size_size=32,log_dir=log_dir
     )
 
-    # Validation: greedy and best-of-K
+    # === Validation: greedy και best-of-K ===
     actor_critic.eval()
-    val_makespan_greedy = validate_ppo(
+
+    # best-of-1 (stochastic=1 rollout) + greedy
+    val_stoch_1, val_greedy = validate_ppo(
         dataloader=dataloaders['val'],
         actor_critic=actor_critic,
         device=device,
@@ -105,34 +106,43 @@ for epoch in range(num_epochs):
         best_of_k=1,
         progress_every=PROGRESS_EVERY,
     )
-    val_makespan_best = validate_ppo(
-        dataloader=dataloaders['val'],
-        actor_critic=actor_critic,
-        device=device,
-        limit_instances=VAL_LIMIT,
-        best_of_k=BEST_OF_K,
-        progress_every=PROGRESS_EVERY,
-    ) if BEST_OF_K > 1 else val_makespan_greedy
+
+    # best-of-K 
+    if BEST_OF_K > 1:
+        val_stoch_K, _ = validate_ppo(
+            dataloader=dataloaders['val'],
+            actor_critic=actor_critic,
+            device=device,
+            limit_instances=VAL_LIMIT,
+            best_of_k=BEST_OF_K,
+            progress_every=PROGRESS_EVERY,
+        )
+    else:
+        val_stoch_K = val_stoch_1
+
     actor_critic.train()
 
-    all_makespans.append(train_makespan)
+    # logging 
     log_data.append({
         "epoch": epoch + 1,
         "train_loss": loss,
         "train_best_makespan": train_makespan,
-        "val_makespan_greedy": val_makespan_greedy,
-        "val_makespan_best_of_k": val_makespan_best,
+        "val_stoch_best_of_1": val_stoch_1,
+        "val_stoch_best_of_k": val_stoch_K,
+        "val_greedy": val_greedy,
         "best_of_k": BEST_OF_K,
         "val_limit": VAL_LIMIT,
     })
     save_training_log_csv(log_data, filename=os.path.join(log_dir, "training_log_ppo.csv"))
 
-    # Choose which metric to save on (best-of-K by default)
-    score_for_saving = val_makespan_best
+    # === Select metric for saving ===
+    score_for_saving = val_stoch_K  
     if score_for_saving < best_val_makespan:
         best_val_makespan = score_for_saving
         torch.save(actor_critic.state_dict(), os.path.join(model_dir, "best_ppo.pt"))
         print("✅ Saved new best PPO model.")
+
+    
 
 # === Plot Convergence ===
 plot_rl_convergence(all_makespans, save_path=os.path.join(plot_dir, "rl_convergence.png"))
@@ -140,7 +150,8 @@ plot_rl_convergence(all_makespans, save_path=os.path.join(plot_dir, "rl_converge
 # === Gantt Chart for First Instance (greedy rollout) ===
 example = instances[0]
 actor_critic.eval()
-env = JSSPEnvironment(example['times'], example['machines'], device=device)
+env = JSSPEnvironment(example['times'], example['machines'])  
+
 env.reset()
 done = False
 while not done:
@@ -161,7 +172,7 @@ run_cp_on_taillard()
 
 # === Run RL on Taillard (Hetero) ===
 print("\nRunning RL on Taillard benchmark instances (HeteroGIN)...")
-subprocess.call([sys.executable, "-m", "eval.main_test_Ηetero_ppo"], cwd=base_dir)
+subprocess.call([sys.executable, "-m", "eval.main_test_Hetero_ppo"], cwd=base_dir)
 
 # === Merge and Compare CP vs PPO vs Reptile ===
 cp_csv = os.path.join(base_dir, "cp", "cp_makespans.csv")

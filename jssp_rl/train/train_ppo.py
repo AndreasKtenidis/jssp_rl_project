@@ -1,8 +1,8 @@
 import torch
-import torch.nn as nn
 from torch.distributions import Categorical
 from torch_geometric.data import Data
 import gc
+import torch.nn.functional as F
 
 from utils.buffer import RolloutBuffer
 from utils.features import prepare_features
@@ -106,8 +106,8 @@ def train(dataloader, actor_critic, optimizer, device, switch_epoch=7, update_ba
 
                 # Normalize returns 
                 if returns.numel() > 1:
-                    returns = (returns - returns.mean()) / (returns.std(unbiased=False) + 1e-6)
-                    returns = returns * 0.1
+                    returns = (returns - returns.mean()) / (returns.std(unbiased=False) + 1e-8)
+                    returns = returns 
 
                 # Normalize advantages 
                 if advantages.numel() > 1:
@@ -127,7 +127,7 @@ def train(dataloader, actor_critic, optimizer, device, switch_epoch=7, update_ba
                 surr2 = torch.clamp(ratio, 1 - clip_epsilon, 1 + clip_epsilon) * advantages
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                value_loss = nn.MSELoss()(values.view(-1), returns.view(-1))
+                value_loss = F.smooth_l1_loss(values.view(-1), returns.view(-1))
                 loss = policy_loss + value_coef * value_loss - entropy_coef * entropy
 
                 optimizer.zero_grad()

@@ -2,12 +2,8 @@ import torch
 from models.gin import HeteroGIN
 
 def prepare_features(env, device):
-    """
-    Build HeteroData features for HeteroGIN on the *given* device (model device).
-    """
-    # Always work on the device passed in (model device)
     
-
+    
     num_jobs = env.num_jobs
     num_machines = env.num_machines
 
