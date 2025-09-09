@@ -85,7 +85,7 @@ def train(
 
                 num_ops = int(data["op"].x.size(0))
 
-                # Get legal mask ONLY 
+                # Get legal mask ONLY (ignore any "top-k" info)
                 valid_idx, valid_mask, _topk_idx, _topk_mask = select_top_k_actions(
                     env, top_k=1, device=device
                 )
@@ -117,7 +117,7 @@ def train(
                 # Hard-mask the logits with valid_mask
                 masked_logits = logits.clone().masked_fill(~valid_mask, -1e10)
 
-                # === Action selection (SAME distribution we'll use at update) ===
+                # === Action selection (SAME distribution at update) ===
                 dist = Categorical(logits=masked_logits)
                 action_t = dist.sample()
                 action = int(action_t.item())
@@ -128,14 +128,14 @@ def train(
                 ep_reward += reward
                 step_idx += 1
 
-                
+                # Store transition (mask only; keep topk_mask as all False for compatibility)
                 topk_mask_false = torch.zeros_like(valid_mask, dtype=torch.bool, device=valid_mask.device)
                 ep_buf.add(
                     state=data,
                     action=action,
                     reward=reward,
                     log_prob=log_prob,
-                    value=value.view(-1),  
+                    value=value.view(-1),  # keep tensor shape consistent
                     done=done,
                     mask=valid_mask,
                     topk_mask=topk_mask_false
@@ -165,7 +165,7 @@ def train(
         # =========================
         last_epoch_avg_loss = 0.0
         actor_critic.train()
-        ent_coef = entropy_coef  # constant 
+        ent_coef = entropy_coef  # constant (no decay)
 
         for epoch in range(epochs):
             epoch_loss_sum = 0.0
@@ -173,10 +173,11 @@ def train(
             epoch_weight_sum = 0
 
             for b_idx, batch in enumerate(chunk_buffer.get_batches(batch_size)):
-                
-                
-                states, actions, old_log_probs, returns, advantages, old_values, masks, _topk_masks = batch
-                
+                # Buffer may return with/without topk_masks (we ignore them anyway)
+                if len(batch) == 8:
+                    states, actions, old_log_probs, returns, advantages, old_values, masks, _topk_masks = batch
+                else:
+                    states, actions, old_log_probs, returns, advantages, old_values, masks = batch
 
                 # — move to device —
                 actions       = actions.to(device)
@@ -260,7 +261,7 @@ def train(
                 v_loss2 = F.smooth_l1_loss(vclip_z, ret_z, reduction='none')
                 value_loss = (torch.max(v_loss1, v_loss2)[k_idx].sum() / denom)
 
-                # Raw-space RMSE for monitoring (real value, not normalized)
+                # Raw-space RMSE for monitoring 
                 with torch.no_grad():
                     rmse_value_raw = torch.sqrt(F.mse_loss(values_raw[k_idx], returns_raw[k_idx]))
 

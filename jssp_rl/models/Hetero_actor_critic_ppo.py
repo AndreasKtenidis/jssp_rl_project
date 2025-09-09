@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import global_mean_pool
-from models.gin import HeteroGIN
+from models.gin import HeteroGATv2
 
 class ActorCriticPPO(nn.Module):
     def __init__(self, node_input_dim, gnn_hidden_dim, gnn_output_dim,
                  actor_hidden_dim, critic_hidden_dim):
         super(ActorCriticPPO, self).__init__()
 
-        self.gnn = HeteroGIN(
+        self.gnn = HeteroGATv2(
             in_channels=node_input_dim,
             hidden_dim=gnn_hidden_dim,
             out_channels=gnn_output_dim
@@ -16,13 +16,13 @@ class ActorCriticPPO(nn.Module):
 
         self.actor_mlp = nn.Sequential(
             nn.Linear(gnn_output_dim, actor_hidden_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(actor_hidden_dim, 1)
         )
 
         self.critic_mlp = nn.Sequential(
             nn.Linear(gnn_output_dim, critic_hidden_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(critic_hidden_dim, 1)
         )
 

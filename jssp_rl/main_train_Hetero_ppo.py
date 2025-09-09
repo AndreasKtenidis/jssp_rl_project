@@ -48,7 +48,7 @@ dataloaders = get_dataloaders(dataset, batch_size=batch_size)
 
 # === Model ===
 actor_critic = ActorCriticPPO(
-    node_input_dim=3,
+    node_input_dim=13,
     gnn_hidden_dim=128,
     gnn_output_dim=64,
     actor_hidden_dim=64,
@@ -135,8 +135,8 @@ for epoch in range(num_epochs):
     })
     save_training_log_csv(log_data, filename=os.path.join(log_dir, "training_log_ppo.csv"))
 
-    # === Select metric for saving ===
-    score_for_saving = val_stoch_K  
+    # === Επιλογή metric για saving ===
+    score_for_saving = val_stoch_K  # μικρότερο = καλύτερο
     if score_for_saving < best_val_makespan:
         best_val_makespan = score_for_saving
         torch.save(actor_critic.state_dict(), os.path.join(model_dir, "best_ppo.pt"))
@@ -205,7 +205,7 @@ merged = pd.merge(
     validate="one_to_one",
 )
 
-# Optionally merge Reptile results
+#  merge Reptile results
 if os.path.exists(reptile_csv):
     reptile_df = pd.read_csv(reptile_csv).drop_duplicates(subset=["instance_id"], keep="last")
 
