@@ -62,7 +62,7 @@ def train(
         actor_critic.eval()
 
         for instance in chunk:
-            times    = instance["times"]
+            times    = instance["times"] #why? in validate we dont
             machines = instance["machines"]
 
             env = JSSPEnvironment(times, machines)
@@ -101,7 +101,7 @@ def train(
                         f"At first step, expected {env.num_jobs} legal actions (one per job), "
                         f"but got {legal_mask}. Check index alignment between env and features."
                     )
-                    assert valid_mask.numel() == data['op'].x.size(0), (
+                    assert valid_mask.numel() == data['op'].x.size(0), ( #otherwise index misalignment
                         f"Mask length ({valid_mask.numel()}) != #op nodes ({data['op'].x.size(0)})."
                     )
 

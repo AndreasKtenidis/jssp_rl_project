@@ -19,3 +19,12 @@ BEST_OF_K      = 10
 PROGRESS_EVERY = 10
 LOG_BOTH       = True
 SAVE_GANTT_FOR_BEST = True
+
+# Reward / environment parameters
+#w1 = 1.0
+w2 = 1.0
+w3 = 1.0
+w4 = 1.0
+
+alpha_idle  = 0.0
+delta_bonus = 0.0

@@ -142,7 +142,6 @@ for epoch in range(num_epochs):
         torch.save(actor_critic.state_dict(), os.path.join(model_dir, "best_ppo.pt"))
         print("✅ Saved new best PPO model.")
 
-    
 
 # === Plot Convergence ===
 plot_rl_convergence(all_makespans, save_path=os.path.join(plot_dir, "rl_convergence.png"))

@@ -245,9 +245,6 @@ class JSSPEnvironment:
         # Keep the signature identical: (state, reward, done, makespan)
         return self.state, float(reward), done, float(makespan)
 
-
-
-
     def get_available_actions(self):
         available = []
         for job in range(self.num_jobs):

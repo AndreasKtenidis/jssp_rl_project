@@ -124,8 +124,6 @@ def prepare_features(env, device):
     job_slack = clb - job_remaining_tensor
     job_slack_time = job_slack.repeat_interleave(num_machines)
 
-
-
     # --- Stack all features (13 columns total) ---
     X = torch.stack([
         processing_time,       # f0
@@ -143,7 +141,6 @@ def prepare_features(env, device):
         job_slack_time         #f12
 
     ], dim=1)
-
 
     # --- Normalize continuous features only (not binary ones) ---
     binary_mask = torch.tensor([0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.bool, device=device)
