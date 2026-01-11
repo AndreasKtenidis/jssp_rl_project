@@ -21,7 +21,7 @@ LOG_BOTH       = True
 SAVE_GANTT_FOR_BEST = True
 
 # Reward / environment parameters
-#w1 = 1.0
+w1 = 1.0
 w2 = 1.0
 w3 = 1.0
 w4 = 1.0

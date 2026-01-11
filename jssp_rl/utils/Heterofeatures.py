@@ -14,6 +14,7 @@ def prepare_features(env, device):
 
     # --- Feature 1: Processing time (flattened) ---
     processing_time = times.flatten().to(torch.float32)
+    # sc2 processing_time = torch.log1p(processing_time)
 
     # --- Feature 2: Is scheduled (binary) ---
     is_scheduled = state.flatten().to(torch.float32)
@@ -145,8 +146,10 @@ def prepare_features(env, device):
     # --- Normalize continuous features only (not binary ones) ---
     binary_mask = torch.tensor([0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.bool, device=device)
     X_cont = X[:, ~binary_mask]
+    #sc3 ? Clip outliers before z-score: X_cont = X_cont.clamp(min=-kstd, max=kstd) # k=3..5
+    #sc3 ? Log1p for heavy tails: X_cont = torch.log1p(X_cont) # before z-score -
     mean, std = X_cont.mean(dim=0, keepdim=True), X_cont.std(dim=0, keepdim=True) + 1e-6
-    X[:, ~binary_mask] = (X_cont - mean) / std
+    X[:, ~binary_mask] = (X_cont - mean) / std #wreplace non binary ith their z‑scores.
 
     # --- Build edge_index_dict then HeteroData ---
     edge_index_dict_cpu = HeteroGATv2.build_edge_index_dict(machines.detach().cpu())

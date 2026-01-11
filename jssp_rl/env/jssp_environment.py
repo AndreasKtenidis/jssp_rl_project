@@ -43,8 +43,7 @@ class JSSPEnvironment:
         return -remaining_work  
     
     def phi3_critical_path_length(self):
-        
-
+    
         # --- Step 1: Δημιουργία κόμβων ---
         num_ops = self.num_jobs * self.num_machines
         durations = {}  # (j,o) -> duration
@@ -139,7 +138,6 @@ class JSSPEnvironment:
 
         return +completed_now  
 
-
     def estimate_clb(self):
         """
         Lower bound estimation of remaining makespan (CLB) based on:
@@ -155,8 +153,6 @@ class JSSPEnvironment:
             job_remaining.append(rem)
 
         return max(job_remaining)
-
-
 
     def step(self, action, use_clb_reward=False):
         # --- 0) Bounds guard ---
@@ -191,8 +187,6 @@ class JSSPEnvironment:
 
         prev_clb = self.estimate_clb() if use_clb_reward else None
 
-
-
         # --- 3) previous makespan (before scheduling this op) ---
         prev_makespan = float(self.job_completion_times.max().item())
 
@@ -213,7 +207,6 @@ class JSSPEnvironment:
         R_base   = -(makespan - prev_makespan)  # ≤ 0.0
 
         # Φ after scheduling
-
         next_phi1 = self.phi1_scheduled_ratio()
         next_phi2 = self.phi2_remaining_work()
         next_phi3 = self.phi3_critical_path_length()
@@ -226,16 +219,13 @@ class JSSPEnvironment:
         if done:
             reward = -makespan  # terminal reward
         else:
-            reward = R_base
+            reward = R_base #sc5 to simplify reward keep this line in else/delete bellow
             reward += gamma * (next_phi1 - prev_phi1) * w1
             reward += gamma * (next_phi2 - prev_phi2) * w2
             reward += gamma * (next_phi3 - prev_phi3) * w3
             reward += gamma * (next_phi4 - prev_phi4) * w4
             reward += alpha_idle    * self.penalty_machine_idleness()
             reward += delta_bonus   * self.bonus_job_completion(prev_state)
-
-
-        
 
         # Optional CLB-style reward
         if use_clb_reward:

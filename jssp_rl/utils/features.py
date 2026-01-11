@@ -11,6 +11,7 @@ def prepare_features(env, edge_index,device):
     num_nodes = num_jobs * num_machines
 
     processing_time = env.times.flatten()
+    #sc2 processing_time = torch.log1p(processing_time)
 
 
     remaining_ops = []
