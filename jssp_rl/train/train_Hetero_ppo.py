@@ -152,6 +152,7 @@ def train(
             mk = env.get_makespan()
             all_makespans.append(mk)
             total_episodes += 1
+            print(f"[progress] ep {total_episodes}/{len(dataset)}")
             print(
                 f"[chunk {chunk_start//update_batch_size_size + 1} | Ep {total_episodes}] "
                 f"Makespan: {mk:.2f} | Total Reward: {ep_reward:.2f} | "

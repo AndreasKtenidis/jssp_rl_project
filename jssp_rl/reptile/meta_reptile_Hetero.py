@@ -15,7 +15,6 @@ from train.train_Hetero_ppo import train as ppo_inner_train
 from train.validate_Hetero_ppo import validate_ppo
 from models.Hetero_actor_critic_ppo import ActorCriticPPO
 
-
 def reptile_meta_train(
     task_loader: Iterable,
     actor_critic: ActorCriticPPO,
@@ -32,7 +31,8 @@ def reptile_meta_train(
     inner_update_batch_size: int = 16,
     validate_every: int = 10,
     # logging
-    log_csv_path: str = "/home/aktenidis/JSSPprojects/jssp_rl_project/jssp_rl/outputs/logs/meta_reptile_hetero_log.csv",
+    #log_csv_path: str = "/home/aktenidis/JSSPprojects/jssp_rl_project/jssp_rl/outputs/logs/meta_reptile_hetero_log.csv",
+    log_csv_path: str = "outputs/logs/meta_reptile_hetero_log.csv"
 ) -> ActorCriticPPO:
     """
     Reptile meta-training over PPO with HeteroGIN + CSV logging.

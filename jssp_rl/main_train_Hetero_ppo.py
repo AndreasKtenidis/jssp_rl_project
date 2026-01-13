@@ -8,7 +8,7 @@ import torch
 from data.dataset import JSSPDataset, split_dataset, get_dataloaders
 from env.jssp_environment import JSSPEnvironment
 from models.Hetero_actor_critic_ppo import ActorCriticPPO
-from reptile.meta_reptile_Hetero import reptile_meta_train
+#from reptile.meta_reptile_Hetero import reptile_meta_train
 
 from train.train_Hetero_ppo import train
 from train.validate_Hetero_ppo import validate_ppo
@@ -56,27 +56,27 @@ actor_critic = ActorCriticPPO(
 ).to(device)
 
 # === Reptile Meta-Learning ===
-meta_ckpt_path = os.path.join(base_dir, "saved", "meta_best.pth")
-print("\n🔁 [Step 1] Running Reptile Meta-Training...")
-actor_critic = reptile_meta_train(
-    task_loader=dataloaders['train'],
-    actor_critic=actor_critic,
-    val_loader=dataloaders['val'],
-    meta_iterations=100,
-    meta_batch_size=16,
-    inner_steps=1,
-    inner_lr=1e-4,
-    meta_lr=1e-3,
-    device=device,
-    save_path=meta_ckpt_path,
-    inner_update_batch_size=16,
-    validate_every=10,
-)
-print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
+#meta_ckpt_path = os.path.join(base_dir, "saved", "meta_best.pth")
+#print("\n🔁 [Step 1] Running Reptile Meta-Training...")
+#actor_critic = reptile_meta_train(
+    #task_loader=dataloaders['train'],
+    #actor_critic=actor_critic,
+    #val_loader=dataloaders['val'],
+    #meta_iterations=100,
+    #meta_batch_size=16,
+    #inner_steps=1,
+    #inner_lr=1e-4,
+    #meta_lr=1e-3,
+    #device=device,
+    #save_path=meta_ckpt_path,
+    #inner_update_batch_size=16,
+    #validate_every=10,
+#)
+#print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
 
 # Warm start PPO
-actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
-print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")
+#actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
+#print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")
 
 optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 

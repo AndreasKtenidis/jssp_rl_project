@@ -3,8 +3,6 @@ from train.episode_runner import run_episode
 from env.jssp_environment import JSSPEnvironment
 
 def validate(dataloader, gnn, actor, critic, edge_index, edge_weights, device):
-    
-
     gnn = gnn.to(device).eval()
     actor = actor.to(device).eval()
     critic = critic.to(device).eval()
