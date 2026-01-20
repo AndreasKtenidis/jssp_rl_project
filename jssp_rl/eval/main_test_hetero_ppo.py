@@ -11,9 +11,7 @@ from utils.Heterofeatures import prepare_features
 
 from config import BEST_OF_K, SAVE_GANTT_FOR_BEST
 
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def load_checkpoint(path):
     if not os.path.exists(path):

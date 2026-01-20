@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F 
 
 from torch.optim.lr_scheduler import CosineAnnealingLR 
+from torch.utils.data import Subset
 from torch.distributions import Categorical 
 from utils.HeteroBuffer import RolloutBuffer 
 from utils.Heterofeatures import prepare_features 
@@ -43,7 +44,14 @@ def train(
 
     print("\n=== PPO (HeteroGIN) Training in update-batches ===")
 
-    dataset = dataloader.dataset if hasattr(dataloader, "dataset") else dataloader
+    #dataset = dataloader.dataset if hasattr(dataloader, "dataset") else dataloader --> forces full‑dataset training
+    if isinstance(dataloader, Subset):
+        dataset = [dataloader[i] for i in range(len(dataloader))]
+    elif hasattr(dataloader, "dataset"):
+        dataset = dataloader.dataset
+    else:
+        dataset = dataloader
+
     # running normalizer for returns (used only in value loss)
     return_norm = RunningReturnNormalizer()
 
@@ -54,7 +62,6 @@ def train(
         # Cosine LR per-chunk
         base_lr = optimizer.param_groups[0]['lr']
         scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=base_lr * 0.01)
-        
 
         # =========================
         # 1) Rollout collection (EVAL mode → stable logits/Dropout off)
@@ -152,7 +159,6 @@ def train(
             mk = env.get_makespan()
             all_makespans.append(mk)
             total_episodes += 1
-            print(f"[progress] ep {total_episodes}/{len(dataset)}")
             print(
                 f"[chunk {chunk_start//update_batch_size_size + 1} | Ep {total_episodes}] "
                 f"Makespan: {mk:.2f} | Total Reward: {ep_reward:.2f} | "

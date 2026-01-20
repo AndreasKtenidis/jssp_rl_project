@@ -8,7 +8,7 @@ import torch
 from data.dataset import JSSPDataset, split_dataset, get_dataloaders
 from env.jssp_environment import JSSPEnvironment
 from models.Hetero_actor_critic_ppo import ActorCriticPPO
-#from reptile.meta_reptile_Hetero import reptile_meta_train
+from reptile.meta_reptile_Hetero import reptile_meta_train
 
 from train.train_Hetero_ppo import train
 from train.validate_Hetero_ppo import validate_ppo
@@ -22,7 +22,6 @@ from utils.logging_utils import (
 )
 
 from config import lr, num_epochs, batch_size, VAL_LIMIT, BEST_OF_K, PROGRESS_EVERY
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -42,9 +41,20 @@ for d in [log_dir, gantt_dir, plot_dir, model_dir, comparison_dir]:
 with open(os.path.join(base_dir, "saved", "Synthetic_instances_15x15_505.pkl"), "rb") as f:
     instances = pickle.load(f)
 
+#sc8 debugging delete
+#print("num instances:", len(instances))
+#print("First instances example:", instances[3])
+
+instances = instances[:100]  #sc8 debugging limit to 50 instances
 dataset = JSSPDataset(instances)
 split_dataset(dataset)
+#sc6 spit_dataset_seeded(dataset, seed=42)  # για reproducibility
 dataloaders = get_dataloaders(dataset, batch_size=batch_size)
+
+train_dataset = dataset.get_split("train")
+val_dataset = dataset.get_split("val")
+print(f"train instances: {len(train_dataset)}")
+print(f"eval instances:  {len(val_dataset)}")
 
 # === Model ===
 actor_critic = ActorCriticPPO(
@@ -56,27 +66,28 @@ actor_critic = ActorCriticPPO(
 ).to(device)
 
 # === Reptile Meta-Learning ===
-#meta_ckpt_path = os.path.join(base_dir, "saved", "meta_best.pth")
-#print("\n🔁 [Step 1] Running Reptile Meta-Training...")
-#actor_critic = reptile_meta_train(
-    #task_loader=dataloaders['train'],
-    #actor_critic=actor_critic,
-    #val_loader=dataloaders['val'],
+meta_ckpt_path = os.path.join(base_dir, "saved", "meta_best.pth")
+print("\n🔁 [Step 1] Running Reptile Meta-Training...")
+actor_critic = reptile_meta_train(
+    task_loader=dataloaders['train'],
+    actor_critic=actor_critic,
+    val_loader=dataloaders['val'],
+    meta_iterations=10, #sc8 debugging reduce
     #meta_iterations=100,
-    #meta_batch_size=16,
-    #inner_steps=1,
-    #inner_lr=1e-4,
-    #meta_lr=1e-3,
-    #device=device,
-    #save_path=meta_ckpt_path,
-    #inner_update_batch_size=16,
-    #validate_every=10,
-#)
-#print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
+    meta_batch_size=16,
+    inner_steps=1,
+    inner_lr=1e-4,
+    meta_lr=1e-3,
+    device=device,
+    save_path=meta_ckpt_path,
+    inner_update_batch_size=16,
+    validate_every=10,
+)
+print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
 
 # Warm start PPO
-#actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
-#print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")
+actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
+print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")
 
 optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 
@@ -142,7 +153,6 @@ for epoch in range(num_epochs):
         torch.save(actor_critic.state_dict(), os.path.join(model_dir, "best_ppo.pt"))
         print("✅ Saved new best PPO model.")
 
-
 # === Plot Convergence ===
 plot_rl_convergence(all_makespans, save_path=os.path.join(plot_dir, "rl_convergence.png"))
 
@@ -171,7 +181,7 @@ run_cp_on_taillard()
 
 # === Run RL on Taillard (Hetero) ===
 print("\nRunning RL on Taillard benchmark instances (HeteroGIN)...")
-subprocess.call([sys.executable, "-m", "eval.main_test_Hetero_ppo"], cwd=base_dir)
+subprocess.call([sys.executable, "-m", "eval.main_test_hetero_ppo"], cwd=base_dir)
 
 # === Merge and Compare CP vs PPO vs Reptile ===
 cp_csv = os.path.join(base_dir, "cp", "cp_makespans.csv")
