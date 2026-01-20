@@ -5,3 +5,9 @@ __pycache__/
 checkpoints/
 checkpointsV2/
 *.log
+
+# Local / IDE
+.history/
+
+# Python venv
+venv_gpu/
