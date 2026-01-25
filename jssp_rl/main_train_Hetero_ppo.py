@@ -5,10 +5,10 @@ import subprocess
 import pandas as pd
 import torch
 
-from data.dataset import JSSPDataset, split_dataset, get_dataloaders
+from data.dataset import JSSPDataset, split_dataset, get_dataloaders, split_dataset_seeded
 from env.jssp_environment import JSSPEnvironment
 from models.Hetero_actor_critic_ppo import ActorCriticPPO
-#from reptile.meta_reptile_Hetero import reptile_meta_train
+from reptile.meta_reptile_Hetero import reptile_meta_train
 
 from train.train_Hetero_ppo import train
 from train.validate_Hetero_ppo import validate_ppo
@@ -22,7 +22,6 @@ from utils.logging_utils import (
 )
 
 from config import lr, num_epochs, batch_size, VAL_LIMIT, BEST_OF_K, PROGRESS_EVERY
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -42,9 +41,21 @@ for d in [log_dir, gantt_dir, plot_dir, model_dir, comparison_dir]:
 with open(os.path.join(base_dir, "saved", "Synthetic_instances_15x15_505.pkl"), "rb") as f:
     instances = pickle.load(f)
 
+#sc8 debugging delete
+#print("num instances:", len(instances))
+#print("First instances example:", instances[3])
+
+instances = instances[:100]  #sc8 debugging limit to 50 instances
 dataset = JSSPDataset(instances)
-split_dataset(dataset)
+#split_dataset(dataset)
+#sc6 split_dataset_seeded(dataset, seed=42)  # για reproducibility
+split_dataset_seeded(dataset, seed=42) 
 dataloaders = get_dataloaders(dataset, batch_size=batch_size)
+
+train_dataset = dataset.get_split("train")
+val_dataset = dataset.get_split("val")
+print(f"train instances: {len(train_dataset)}")
+print(f"eval instances:  {len(val_dataset)}")
 
 # === Model ===
 actor_critic = ActorCriticPPO(
@@ -55,28 +66,29 @@ actor_critic = ActorCriticPPO(
     critic_hidden_dim=64,
 ).to(device)
 
-# === Reptile Meta-Learning ===
-#meta_ckpt_path = os.path.join(base_dir, "saved", "meta_best.pth")
-#print("\n🔁 [Step 1] Running Reptile Meta-Training...")
-#actor_critic = reptile_meta_train(
-    #task_loader=dataloaders['train'],
-    #actor_critic=actor_critic,
-    #val_loader=dataloaders['val'],
+'''# === Reptile Meta-Learning ===
+meta_ckpt_path = os.path.join(base_dir, "saved", "meta_best.pth")
+print("\n🔁 [Step 1] Running Reptile Meta-Training...")
+actor_critic = reptile_meta_train(
+    task_loader=dataloaders['train'],
+    actor_critic=actor_critic,
+    val_loader=dataloaders['val'],
+    meta_iterations=10, #sc8 debugging reduce
     #meta_iterations=100,
-    #meta_batch_size=16,
-    #inner_steps=1,
-    #inner_lr=1e-4,
-    #meta_lr=1e-3,
-    #device=device,
-    #save_path=meta_ckpt_path,
-    #inner_update_batch_size=16,
-    #validate_every=10,
-#)
-#print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
+    meta_batch_size=16,
+    inner_steps=1,
+    inner_lr=1e-4,
+    meta_lr=1e-3,
+    device=device,
+    save_path=meta_ckpt_path,
+    inner_update_batch_size=16,
+    validate_every=10,
+)
+print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
 
 # Warm start PPO
-#actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
-#print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")
+actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
+print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")'''
 
 optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 
@@ -142,7 +154,6 @@ for epoch in range(num_epochs):
         torch.save(actor_critic.state_dict(), os.path.join(model_dir, "best_ppo.pt"))
         print("✅ Saved new best PPO model.")
 
-
 # === Plot Convergence ===
 plot_rl_convergence(all_makespans, save_path=os.path.join(plot_dir, "rl_convergence.png"))
 
@@ -171,7 +182,7 @@ run_cp_on_taillard()
 
 # === Run RL on Taillard (Hetero) ===
 print("\nRunning RL on Taillard benchmark instances (HeteroGIN)...")
-subprocess.call([sys.executable, "-m", "eval.main_test_Hetero_ppo"], cwd=base_dir)
+subprocess.call([sys.executable, "-m", "eval.main_test_hetero_ppo"], cwd=base_dir)
 
 # === Merge and Compare CP vs PPO vs Reptile ===
 cp_csv = os.path.join(base_dir, "cp", "cp_makespans.csv")
@@ -185,9 +196,17 @@ cp_df = pd.read_csv(cp_csv).drop_duplicates(subset=["instance_id"], keep="last")
 ppo_df = pd.read_csv(ppo_csv).drop_duplicates(subset=["instance_id"], keep="last")
 
 # Detect PPO columns (greedy & best-of-K)
+#greedy_col = "rl_makespan_greedy" if "rl_makespan_greedy" in ppo_df.columns else "rl_makespan"
+#best_cols = [c for c in ppo_df.columns if c.startswith("rl_makespan_best_of_")]
+#best_col = best_cols[0] if best_cols else greedy_col
+
+#sc10 include stochastic best-of-K columns in Taillard comparison
+# Detect PPO columns (greedy & stochastic best-of-K)
 greedy_col = "rl_makespan_greedy" if "rl_makespan_greedy" in ppo_df.columns else "rl_makespan"
-best_cols = [c for c in ppo_df.columns if c.startswith("rl_makespan_best_of_")]
-best_col = best_cols[0] if best_cols else greedy_col
+stoch_cols = [
+    c for c in ppo_df.columns
+    if c.startswith("rl_makespan_best_of_") or c.startswith("rl_makespan_stochastic_best_of_")
+]
 
 # Keep only the needed columns
 ppo_keep = ["instance_id", greedy_col, best_col] if best_col != greedy_col else ["instance_id", greedy_col]
@@ -240,11 +259,15 @@ cp = merged["cp_makespan"].to_numpy()
 g = merged[greedy_col].to_numpy()
 merged["gap_greedy"] = (g - cp) / cp
 
-if best_col != greedy_col:
-    b = merged[best_col].to_numpy()
-    merged["gap_best"] = (b - cp) / cp
-else:
-    merged["gap_best"] = merged["gap_greedy"]
+for col in stoch_cols:
+    gap_name = f"gap_{col.replace('rl_makespan_', '')}"
+    merged[gap_name] = (merged[col].to_numpy() - cp) / cp
+
+#if best_col != greedy_col:
+#    b = merged[best_col].to_numpy()
+#    merged["gap_best"] = (b - cp) / cp
+#else:
+#    merged["gap_best"] = merged["gap_greedy"]
 
 # Reptile gaps (if present)
 if "rl_makespan_greedy_reptile" in merged.columns:
@@ -257,9 +280,12 @@ if "rl_makespan_best_reptile" in merged.columns:
 merged.to_csv(merged_csv, index=False)
 print(f"✅ Saved merged CP vs PPO vs Reptile comparison to {merged_csv}")
 
-
 # Plot (function auto-detects best-of-K if present)
-plot_cp_vs_rl_comparison(merged.rename(columns={greedy_col: "rl_makespan", best_col: best_col}),
+#plot_cp_vs_rl_comparison(merged.rename(columns={greedy_col: "rl_makespan", best_col: best_col}),
+ #                        save_path=plot_path)
+
+#sc10 include stochastic best-of-K columns in Taillard comparison
+plot_cp_vs_rl_comparison(merged.rename(columns={greedy_col: "rl_makespan"}),
                          save_path=plot_path)
 
 print("\n✅ Full pipeline complete: Reptile → PPO → CP vs RL evaluation.")

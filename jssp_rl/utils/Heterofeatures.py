@@ -140,7 +140,6 @@ def prepare_features(env, device):
         job_progress_ratio,    #f10
         job_remaining_time,    #f11
         job_slack_time         #f12
-
     ], dim=1)
 
     # --- Normalize continuous features only (not binary ones) ---

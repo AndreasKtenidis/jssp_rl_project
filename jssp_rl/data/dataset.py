@@ -1,5 +1,6 @@
 from torch.utils.data import Dataset, random_split
 from torch_geometric.loader import DataLoader as PyGDataLoader
+import torch
 
 class JSSPDataset(Dataset):
     def __init__(self, instances):
@@ -18,8 +19,7 @@ class JSSPDataset(Dataset):
             return self.val_split
         else:
             raise ValueError(f"Unknown split: {split_name}")
-        
-        
+    
 def split_dataset(dataset, train_ratio=0.8):
     total = len(dataset)
     train_size = int(train_ratio * total)
@@ -29,7 +29,7 @@ def split_dataset(dataset, train_ratio=0.8):
     dataset.val_split = val_subset
 
 def split_dataset_seeded(dataset, train_ratio=0.8, seed=42):
-    # Deterministic split for reproducible train/val sets.
+    #sc6 Deterministic split for reproducible train/val sets
     total = len(dataset)
     train_size = int(train_ratio * total)
     val_size = total - train_size

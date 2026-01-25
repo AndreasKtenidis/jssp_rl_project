@@ -103,7 +103,7 @@ def main():
 
     # Build model & load checkpoint (χωρίς action_dim)
     model = ActorCriticPPO(
-        node_input_dim=3,
+        node_input_dim=13, 
         gnn_hidden_dim=128,
         gnn_output_dim=64,
         actor_hidden_dim=64,

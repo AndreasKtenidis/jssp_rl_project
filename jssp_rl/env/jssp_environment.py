@@ -220,12 +220,12 @@ class JSSPEnvironment:
             reward = -makespan  # terminal reward
         else:
             reward = R_base #sc5 to simplify reward keep this line in else/delete bellow
-            reward += gamma * (next_phi1 - prev_phi1) * w1
-            reward += gamma * (next_phi2 - prev_phi2) * w2
-            reward += gamma * (next_phi3 - prev_phi3) * w3
-            reward += gamma * (next_phi4 - prev_phi4) * w4
-            reward += alpha_idle    * self.penalty_machine_idleness()
-            reward += delta_bonus   * self.bonus_job_completion(prev_state)
+            #reward += gamma * (next_phi1 - prev_phi1) * w1
+            #reward += gamma * (next_phi2 - prev_phi2) * w2
+            #reward += gamma * (next_phi3 - prev_phi3) * w3
+            #reward += gamma * (next_phi4 - prev_phi4) * w4
+            #reward += alpha_idle    * self.penalty_machine_idleness()
+            #reward += delta_bonus   * self.bonus_job_completion(prev_state)
 
         # Optional CLB-style reward
         if use_clb_reward:

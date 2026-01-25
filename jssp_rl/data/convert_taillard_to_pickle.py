@@ -27,4 +27,4 @@ def convert_all_taillard(txt_folder):
     print(f"✅ Saved {len(instances)} Taillard instances to {save_path}")
 
 if __name__ == "__main__":
-    convert_all_taillard("C:/Users/andre/Desktop/Results JSSP/Synthetic_data/Synthetic_500/Synthetic_15x15")
+    convert_all_taillard("C:\Users\User\Downloads\taillard_15x15") #change to your path
