@@ -47,9 +47,14 @@ with open(os.path.join(base_dir, "saved", "Synthetic_instances_15x15_505.pkl"), 
 
 instances = instances[:100]  #sc8 debugging limit to 50 instances
 dataset = JSSPDataset(instances)
+<<<<<<< HEAD
 #split_dataset(dataset)
 #sc6 split_dataset_seeded(dataset, seed=42)  # για reproducibility
 split_dataset_seeded(dataset, seed=42) 
+=======
+split_dataset(dataset)
+#sc6 spit_dataset_seeded(dataset, seed=42)  # για reproducibility
+>>>>>>> 0be8965c25cac1557705b11b82159ccf15f614c0
 dataloaders = get_dataloaders(dataset, batch_size=batch_size)
 
 train_dataset = dataset.get_split("train")
@@ -66,7 +71,11 @@ actor_critic = ActorCriticPPO(
     critic_hidden_dim=64,
 ).to(device)
 
+<<<<<<< HEAD
 '''# === Reptile Meta-Learning ===
+=======
+# === Reptile Meta-Learning ===
+>>>>>>> 0be8965c25cac1557705b11b82159ccf15f614c0
 meta_ckpt_path = os.path.join(base_dir, "saved", "meta_best.pth")
 print("\n🔁 [Step 1] Running Reptile Meta-Training...")
 actor_critic = reptile_meta_train(
@@ -88,7 +97,11 @@ print("✅ Saved best θ★ from Reptile at:", meta_ckpt_path)
 
 # Warm start PPO
 actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
+<<<<<<< HEAD
 print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")'''
+=======
+print(f"✅ Loaded warm-start θ★ for PPO training from: {meta_ckpt_path}")
+>>>>>>> 0be8965c25cac1557705b11b82159ccf15f614c0
 
 optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
 

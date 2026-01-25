@@ -8,11 +8,14 @@ def validate_ppo(
     actor_critic,
     device,
     *,
-    limit_instances: int = 50,   # cap validation size
+    #sc8 debugging delete --> change back to 50
+    limit_instances: int = 20,   # cap validation size
     best_of_k: int = 10,          # >1 → K stochastic rollouts & keep best
     progress_every: int = 10,
     report_greedy: bool = True,  # βγάλε και greedy metric
-    return_both: bool = True     # αν True, επιστρέφει (avg_stochastic, avg_greedy)
+    return_both: bool = True,     # αν True, επιστρέφει (avg_stochastic, avg_greedy)
+    debug_instances:int = 0,     #print rollout details for N instances
+    debug_steps:int =0,          #print first N steps per rollout
 ):
     """
     Validation συμβατό με το baseline train():
@@ -31,7 +34,7 @@ def validate_ppo(
             for i in range(len(T)):
                 yield {"times": T[i], "machines": M[i]}
 
-    def rollout_once(times, machines, *, stochastic: bool):
+    def rollout_once(times, machines, *, stochastic: bool, inst_idx=0, rollout_idx=0):
         # ίδιο init με train()
         env = JSSPEnvironment(times, machines)
         env.reset()
@@ -39,6 +42,7 @@ def validate_ppo(
         max_steps = env.num_jobs * env.num_machines + 50
         steps = 0
 
+        mode = "stoch" if stochastic else "greedy"
         while True:
             steps += 1
             if steps > max_steps:
@@ -50,7 +54,6 @@ def validate_ppo(
 
             # Features στο σωστό device (όπως στην train)
             data = prepare_features(env, device)
-
             logits, _ = actor_critic(data)   # [num_ops]
             logits = logits.view(-1)
 
@@ -59,15 +62,42 @@ def validate_ppo(
             mask[torch.as_tensor(available, device=logits.device, dtype=torch.long)] = True
             masked_logits = logits.masked_fill(~mask, -1e10)
 
+            # sc8 debugging print--> new code undert this
+            probs = torch.softmax(masked_logits, dim=0)
+            legal_probs = probs[mask]
+            k = min(10, legal_probs.numel())
+            topk_probs, topk_idx = torch.topk(legal_probs, k=k)
+            #i think they mismatch with available
+            #legal_indices = torch.as_tensor(available, device=masked_logits.device, dtype=torch.long)                legal_indices = mask.nonzero(as_tuple=False).view(-1)
+            legal_indices = mask.nonzero(as_tuple=False).view(-1)
+            topk_actions = legal_indices[topk_idx].tolist()
+            topk_p = topk_probs.tolist()
+            greedy_choice = int(masked_logits.argmax().item())
+            greedy_prob = float(probs[greedy_choice].item())
+            #sc8 debugging print
+            #if steps % 50 == 0:
+            #    print(
+            #        f"[DBG {mode} inst={inst_idx+1} roll={rollout_idx} step={steps}] "
+            #       f"legal={len(available)} top5={topk_actions} top5_p={[round(p, 4) for p in topk_p]} "
+            #       f"greedy_choice={greedy_choice} greedy_p={greedy_prob:.4f}"
+            #   )
+            
+            # Action selection
             if stochastic:
                 dist = torch.distributions.Categorical(logits=masked_logits)
                 action = int(dist.sample().item())
             else:
                 action = int(masked_logits.argmax().item())
 
+            #sc8 debugging print
+            #if steps % 50 == 0:
+            #    action_prob = float(probs[action].item())
+            #   print(f"[DBG {mode}] action={action} prob={action_prob:.4f}")
+
+            #sc8 debugging print
             _, _, done, _ = env.step(action)
             if done:
-                return env.get_makespan()
+                return env.get_makespan()   
 
     # συσσωρευτές
     total_stoch, total_greedy, n = 0.0, 0.0, 0
@@ -79,7 +109,18 @@ def validate_ppo(
         times = inst["times"]
         machines = inst["machines"]
 
-        # Stochastic metric: single ή best-of-K
+        #sc8 debugging delete
+        if best_of_k > 1:
+            best = float("inf")
+            for r in range(best_of_k):
+                ms = rollout_once(times, machines, stochastic=True, inst_idx=idx, rollout_idx=r+1)
+                if ms < best:
+                    best = ms
+            ms_stoch = best
+        else:
+            ms_stoch = rollout_once(times, machines, stochastic=True, inst_idx=idx, rollout_idx=1)
+
+        '''# Stochastic metric: single ή best-of-K
         if best_of_k > 1:
             best = float("inf")
             for _ in range(best_of_k):
@@ -88,11 +129,13 @@ def validate_ppo(
                     best = ms
             ms_stoch = best
         else:
-            ms_stoch = rollout_once(times, machines, stochastic=True)
+            ms_stoch = rollout_once(times, machines, stochastic=True)'''
 
         # Greedy metric (προαιρετικό)
         if report_greedy:
-            ms_greedy = rollout_once(times, machines, stochastic=False)
+            #sc8 debugging delete
+            #ms_greedy = rollout_once(times, machines, stochastic=False)
+            ms_greedy = rollout_once(times, machines, stochastic=False, inst_idx=idx, rollout_idx=1)
             delta = ms_greedy - ms_stoch
             print(f"[VAL {idx+1}] stoch(best-of-{best_of_k})={ms_stoch:.1f} | greedy={ms_greedy:.1f} | Δ={delta:.1f}")
             total_greedy += ms_greedy
