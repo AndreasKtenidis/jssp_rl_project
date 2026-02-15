@@ -80,7 +80,7 @@ def prepare_features(env, device):
 
     est_start_time = torch.stack(est_start_times)
 
-        # --- Machine-level features: machine load & unscheduled op count ---
+    # --- Machine-level features: machine load & unscheduled op count ---
     mask_unsched = (state == 0)
     unsched_times = times[mask_unsched]
     unsched_machines = machines[mask_unsched]

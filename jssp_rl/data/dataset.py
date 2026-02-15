@@ -10,7 +10,18 @@ class JSSPDataset(Dataset):
         return len(self.instances)
 
     def __getitem__(self, idx):
-        return self.instances[idx]
+        inst = self.instances[idx]
+        times = inst.get("times")
+        machines = inst.get("machines")
+        if not isinstance(times, torch.Tensor):
+            times = torch.as_tensor(times, dtype=torch.float32)
+        else:
+            times = times.to(dtype=torch.float32)
+        if not isinstance(machines, torch.Tensor):
+            machines = torch.as_tensor(machines, dtype=torch.long)
+        else:
+            machines = machines.to(dtype=torch.long)
+        return {"times": times, "machines": machines}
 
     def get_split(self, split_name):
         if split_name == 'train':
@@ -28,11 +39,7 @@ def split_dataset(dataset, train_ratio=0.8):
     dataset.train_split = train_subset
     dataset.val_split = val_subset
 
-<<<<<<< HEAD
 def split_dataset_seeded(dataset, train_ratio=0.8, seed=42):
-=======
-''' def split_dataset_seeded(dataset, train_ratio=0.8, seed=42):
->>>>>>> 0be8965c25cac1557705b11b82159ccf15f614c0
     #sc6 Deterministic split for reproducible train/val sets
     total = len(dataset)
     train_size = int(train_ratio * total)
@@ -40,11 +47,7 @@ def split_dataset_seeded(dataset, train_ratio=0.8, seed=42):
     g = torch.Generator().manual_seed(seed)
     train_subset, val_subset = random_split(dataset, [train_size, val_size], generator=g)
     dataset.train_split = train_subset
-<<<<<<< HEAD
-    dataset.val_split = val_subset
-=======
-    dataset.val_split = val_subset  ''' 
->>>>>>> 0be8965c25cac1557705b11b82159ccf15f614c0
+    dataset.val_split = val_subset 
 
 def init_dataloaders(dataset, splits_to_use=('train', 'val'), batch_size=16, num_workers=0):
     loaders = {}
@@ -56,4 +59,3 @@ def init_dataloaders(dataset, splits_to_use=('train', 'val'), batch_size=16, num
 
 def get_dataloaders(dataset, splits_to_use=('train', 'val'), batch_size=16, num_workers=0):
     return init_dataloaders(dataset, splits_to_use, batch_size, num_workers)
-

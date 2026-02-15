@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn import global_mean_pool, global_add_pool
 from models.gin import HeteroGATv2, HeteroGAT, HeteroGIN
 
 class ActorCriticPPO(nn.Module):
@@ -23,12 +23,23 @@ class ActorCriticPPO(nn.Module):
             nn.Linear(actor_hidden_dim, 1)
         )
 
+        #self.critic_mlp = nn.Sequential(
+        #    nn.Linear(gnn_output_dim, critic_hidden_dim),
+        #    nn.GELU(),
+        #    #sc1 nn.ReLU(),
+        #    nn.Linear(critic_hidden_dim, 1)
+        #)
+
+        #2-layer MLP αντί για 1
         self.critic_mlp = nn.Sequential(
             nn.Linear(gnn_output_dim, critic_hidden_dim),
             nn.GELU(),
             #sc1 nn.ReLU(),
+            nn.Linear(critic_hidden_dim, critic_hidden_dim),
+            nn.GELU(),
             nn.Linear(critic_hidden_dim, 1)
         )
+        #self.critic_attn = nn.Linear(gnn_output_dim, 1) #sc13 attention pooling critic
 
     def forward(self, data):
         node_embeddings = self.gnn(data.x_dict, data.edge_index_dict)
@@ -42,6 +53,11 @@ class ActorCriticPPO(nn.Module):
         graph_embeddings = global_mean_pool(node_embeddings, batch)
         state_values = self.critic_mlp(graph_embeddings)
         return action_logits, state_values
+        #attn_scores = self.critic_attn(node_embeddings).squeeze(-1) #sc13 attention pooling critic
+        #attn_weights = softmax(attn_scores, batch)
+        #graph_embeddings = global_add_pool(node_embeddings * attn_weights.unsqueeze(-1), batch)
+        #state_values = self.critic_mlp(graph_embeddings)
+        #return action_logits, state_values
 
     def act(self, data, mask=None):
         action_logits, state_values = self.forward(data)

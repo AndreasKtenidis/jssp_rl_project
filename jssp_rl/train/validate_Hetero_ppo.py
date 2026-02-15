@@ -67,20 +67,12 @@ def validate_ppo(
             legal_probs = probs[mask]
             k = min(10, legal_probs.numel())
             topk_probs, topk_idx = torch.topk(legal_probs, k=k)
-            #i think they mismatch with available
             #legal_indices = torch.as_tensor(available, device=masked_logits.device, dtype=torch.long)                legal_indices = mask.nonzero(as_tuple=False).view(-1)
             legal_indices = mask.nonzero(as_tuple=False).view(-1)
             topk_actions = legal_indices[topk_idx].tolist()
             topk_p = topk_probs.tolist()
             greedy_choice = int(masked_logits.argmax().item())
             greedy_prob = float(probs[greedy_choice].item())
-            #sc8 debugging print
-            #if steps % 50 == 0:
-            #    print(
-            #        f"[DBG {mode} inst={inst_idx+1} roll={rollout_idx} step={steps}] "
-            #       f"legal={len(available)} top5={topk_actions} top5_p={[round(p, 4) for p in topk_p]} "
-            #       f"greedy_choice={greedy_choice} greedy_p={greedy_prob:.4f}"
-            #   )
             
             # Action selection
             if stochastic:
@@ -89,12 +81,6 @@ def validate_ppo(
             else:
                 action = int(masked_logits.argmax().item())
 
-            #sc8 debugging print
-            #if steps % 50 == 0:
-            #    action_prob = float(probs[action].item())
-            #   print(f"[DBG {mode}] action={action} prob={action_prob:.4f}")
-
-            #sc8 debugging print
             _, _, done, _ = env.step(action)
             if done:
                 return env.get_makespan()   
@@ -120,20 +106,8 @@ def validate_ppo(
         else:
             ms_stoch = rollout_once(times, machines, stochastic=True, inst_idx=idx, rollout_idx=1)
 
-        '''# Stochastic metric: single ή best-of-K
-        if best_of_k > 1:
-            best = float("inf")
-            for _ in range(best_of_k):
-                ms = rollout_once(times, machines, stochastic=True)
-                if ms < best:
-                    best = ms
-            ms_stoch = best
-        else:
-            ms_stoch = rollout_once(times, machines, stochastic=True)'''
-
         # Greedy metric (προαιρετικό)
         if report_greedy:
-            #sc8 debugging delete
             #ms_greedy = rollout_once(times, machines, stochastic=False)
             ms_greedy = rollout_once(times, machines, stochastic=False, inst_idx=idx, rollout_idx=1)
             delta = ms_greedy - ms_stoch

@@ -10,7 +10,7 @@ from utils.HeteroBuffer import RolloutBuffer
 from utils.Heterofeatures import prepare_features 
 from utils.action_masking import select_top_k_actions
 from env.jssp_environment import JSSPEnvironment 
-from utils.train_diagnostics import log_train_metrics_to_csv 
+from utils.train_diagnostics import log_train_metrics_to_csv, log_train_hetero_advantages
 from utils.policy_utils import per_graph_logprob_and_entropy
 from utils.running_norm import RunningReturnNormalizer
 
@@ -314,6 +314,26 @@ def train(
                     returns=returns_raw[k_idx],   # raw for interpretability
                     values=values_raw[k_idx],     # raw for interpretability
                     clip_eps=clip_epsilon,
+                )
+                
+                log_train_hetero_advantages(
+                    out_dir=log_dir,
+                    epoch=epoch,
+                    batch_idx=b_idx,
+                    policy_loss=policy_loss,
+                    value_loss=value_loss,
+                    entropy=entropy,
+                    total_loss=loss,
+                    kl=kl,
+                    clip_frac=clipfrac,
+                    ratio_stats=(r_mean, r_std, r_min, r_max),
+                    advantages=advantages[k_idx],
+                    returns=returns_raw[k_idx],
+                    values=values_raw[k_idx],
+                    rmse_value_raw=rmse_value_raw,
+                    ent_coef=ent_coef,
+                    value_coef_eff=value_coef,
+                    lr=optimizer.param_groups[0]["lr"],
                 )
 
                 valid_min = logits[masks].min().item()   # only valid positions

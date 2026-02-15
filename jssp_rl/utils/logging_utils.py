@@ -4,9 +4,6 @@ import matplotlib.patches as patches
 import matplotlib.colors as mcolors
 import os
 
-
-
-
 def plot_rl_convergence(episode_makespans, save_path=None):
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, len(episode_makespans) + 1), episode_makespans,
@@ -17,7 +14,6 @@ def plot_rl_convergence(episode_makespans, save_path=None):
     plt.grid(True)
 
     if save_path:
-        
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=300)
         print(f"✅ Plot saved to {save_path}")
@@ -29,7 +25,6 @@ def log_epoch(epoch, loss, avg_makespan=None):
     if avg_makespan is not None:
         msg += f" | Avg Makespan: {avg_makespan:.2f}"
     print(msg)
-
 
 def save_training_metrics(metrics_dict_list, filename="training_metrics_log.csv"):
     df = pd.DataFrame(metrics_dict_list)

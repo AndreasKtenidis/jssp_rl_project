@@ -11,7 +11,7 @@ def run_cp_on_taillard():
     data_path = os.path.join(base_dir, "saved", "taillard_instances.pkl")
 
     with open(data_path, "rb") as f:
-        instances = pickle.load(f)
+        instances = pickle.load(f)[:2]  # ONLY instances 0 and 1
 
     # === Run CP and save CSV ===
     results = run_cp_on_all(instances, save_gantt_dir=os.path.join(base_dir, "eval","gantt_cp"))

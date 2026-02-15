@@ -13,7 +13,6 @@ def prepare_features(env, edge_index,device):
     processing_time = env.times.flatten()
     #sc2 processing_time = torch.log1p(processing_time)
 
-
     remaining_ops = []
     for job_id in range(num_jobs):
         for op_index in range(num_machines):
