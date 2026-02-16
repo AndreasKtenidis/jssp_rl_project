@@ -1,7 +1,10 @@
 import torch
 
 
-def prepare_features(env, edge_index,device):
+from torch_geometric.data import HeteroData
+from models.gin import HeteroGATv2
+
+def prepare_features(env, device):
     def normalize(tensor):
         tensor = tensor.to(torch.float32).to(device)
         return (tensor - tensor.mean()) / (tensor.std() + 1e-6)
@@ -36,3 +39,21 @@ def prepare_features(env, edge_index,device):
     ], dim=1).to(device)
 
     return x
+
+
+def make_hetero_data(env, device):
+    x = prepare_features(env, device)
+    edge_index_dict = HeteroGATv2.build_edge_index_dict(env.machines)
+    
+    data = HeteroData()
+    data['op'].x = x
+    
+    # Move edge indices to device
+    # Note: build_edge_index_dict returns on CPU by default
+    job_edges = edge_index_dict[('op', 'job', 'op')].to(device)
+    mach_edges = edge_index_dict[('op', 'machine', 'op')].to(device)
+    
+    data['op', 'job', 'op'].edge_index = job_edges
+    data['op', 'machine', 'op'].edge_index = mach_edges
+    
+    return data

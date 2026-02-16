@@ -1,0 +1,3 @@
+phase,epoch,train_loss,train_best_makespan,val_makespan_greedy,val_makespan_best_of_k
+Phase_1,1,0.18116546794772148,765.776,740.68,636.9
+Phase_1,2,0.17822915688157082,735.066,731.74,636.38

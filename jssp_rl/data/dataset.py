@@ -1,15 +1,44 @@
 from torch.utils.data import Dataset, random_split
 from torch_geometric.loader import DataLoader as PyGDataLoader
 
+import pickle
+import os
+
 class JSSPDataset(Dataset):
-    def __init__(self, instances):
-        self.instances = instances
+    def __init__(self, data_paths):
+        """
+        data_paths: list of strings (paths to .pkl files) or a single string (path to directory)
+        """
+        self.instances = []
+        if isinstance(data_paths, str):
+            if os.path.isdir(data_paths):
+                # Load all .pkl in directory
+                files = [os.path.join(data_paths, f) for f in os.listdir(data_paths) if f.endswith('.pkl')]
+            else:
+                files = [data_paths]
+        else:
+            files = data_paths
+
+        for f_path in files:
+            with open(f_path, 'rb') as f:
+                batch_instances = pickle.load(f)
+                # Ensure each instance knows its size
+                for inst in batch_instances:
+                    if 'size' not in inst:
+                        # Infer from times shape: (N, M)
+                        N, M = inst['times'].shape
+                        inst['size'] = (N, M)
+                self.instances.extend(batch_instances)
 
     def __len__(self):
         return len(self.instances)
 
     def __getitem__(self, idx):
         return self.instances[idx]
+    
+    def filter_by_size(self, size_tuple):
+        """Returns a subset of instances matching (N, M)."""
+        return [inst for inst in self.instances if inst['size'] == size_tuple]
 
     def get_split(self, split_name):
         if split_name == 'train':

@@ -4,8 +4,8 @@ import torch
 from utils.features import prepare_features
 from utils.action_masking import select_top_k_actions
 
-def run_episode(env, gnn, actor, critic, edge_index, edge_weights, epsilon=0.1, device=None):
-    device = device # or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def run_episode(env, gnn, actor, critic, edge_index, edge_weights, epsilon=0.1, device=None, current_epoch=0, switch_epoch=10):
+    
 
     log_probs, values, rewards = [], [], []
     env.reset()

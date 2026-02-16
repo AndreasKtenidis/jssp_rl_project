@@ -1,16 +1,57 @@
 # Config file for hyperparameters
 
-batch_size = 16
-epochs = 50
-# PPO hyperparameters
-clip_epsilon = 0.2          # Clipping parameter for PPO
-lr = 3e-4                   # Learning rate
-gamma = 0.99                # Discount factor
-gae_lambda = 0.95           # Lambda for Generalized Advantage Estimation (GAE)
-num_epochs = 10             # Number of epochs per PPO update
-batch_size = 64             # Mini-batch size for each epoch
-value_coef = 0.5            # Weight for value loss
-entropy_coef = 0.01         # Weight for entropy bonus (encourages exploration)
+# Reptile params
+meta_iterations = 2
+meta_batch_size = 16
+inner_steps = 1
+inner_lr = 1e-4
+meta_lr = 1e-3
+inner_update_batch_size = 16
+validate_every = 10
 
-mini_batch = 1024     # transitions per mini‑batch update
-total_updates = 1000  # training iterations (outer loop)
+# PPO / training
+epochs         = 10         # more than 1 for critic to learn
+num_epochs     = 2         # Total training iterations
+batch_size     = 64         # mini-batch transitions per update step
+lr             = 3e-4       # typical for PPO+Adam
+clip_epsilon   = 0.2
+gamma          = 0.99
+gae_lambda     = 0.95
+value_coef     = 0.5
+entropy_coef   = 0.005      # lower to move away from uniform policy
+
+# Reward shapping 
+w1=0.2
+w2=0.2
+w3=0.4
+w4=0.2
+alpha_idle=-0.1
+delta_bonus=1
+
+
+# 
+mini_batch     = 1024
+total_updates  = 1000
+VAL_LIMIT      = 50
+BEST_OF_K      = 10          
+PROGRESS_EVERY = 10
+LOG_BOTH       = True
+SAVE_GANTT_FOR_BEST = True
+use_est_boost = True   
+est_beta = 20
+
+# Curriculum Learning Configuration
+# Phase Name -> (N, M, file_path)
+CURRICULUM_PHASES = {
+    "Phase_1": {"size": (6, 6),   "file": "Synthetic_instances_6x6_5000.pkl"},
+    "Phase_2": {"size": (10, 10), "file": "Synthetic_instances_10x10_5000.pkl"},
+    "Phase_3": {"size": (15, 15), "file": "Synthetic_instances_15x15_5000.pkl"},
+    "Phase_4": {"size": (20, 15), "file": "Synthetic_instances_20x15_5000.pkl"},
+    "Phase_5": {"size": (20, 20), "file": "Synthetic_instances_20x20_5000.pkl"},
+    "Phase_6": {"size": (30, 20), "file": "Synthetic_instances_30x20_5000.pkl"},
+    "Phase_7": {"size": (50, 20), "file": "Synthetic_instances_50x20_5000.pkl"},
+}
+
+# Training Control
+ACTIVE_PHASE = "Phase_1"  # Default
+RUN_FULL_CURRICULUM = True # Set to True to loop through all phases
