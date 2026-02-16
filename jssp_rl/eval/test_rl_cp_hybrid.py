@@ -62,10 +62,18 @@ def run_hybrid_experiment(checkpoint_path, data_path, time_limit=30, fix_ratio=0
     
     # 2. Load Data
     with open(data_path, "rb") as f:
-        instances = pickle.load(f)
+        all_instances = pickle.load(f)
     
-    # Cap test size for speed if many instances
-    instances = instances[:10] 
+    # USER LIMIT: Take only 1 instance per unique size from Taillard
+    seen_sizes = set()
+    instances = []
+    for inst in all_instances:
+        size = inst['times'].shape
+        if size not in seen_sizes:
+            instances.append(inst)
+            seen_sizes.add(size)
+    
+    print(f"[Hybrid Test] Selected {len(instances)} unique instance sizes for benchmark.")
     
     results = []
     

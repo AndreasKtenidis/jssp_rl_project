@@ -1,17 +1,17 @@
 # Config file for hyperparameters
 
 # Reptile params
-meta_iterations = 2
-meta_batch_size = 16
-inner_steps = 1
+meta_iterations = 10
+meta_batch_size = 64
+inner_steps = 3
 inner_lr = 1e-4
 meta_lr = 1e-3
 inner_update_batch_size = 16
 validate_every = 10
 
 # PPO / training
-epochs         = 10         # more than 1 for critic to learn
-num_epochs     = 2         # Total training iterations
+epochs         = 3          # epochs per update
+num_epochs     = 90         # total training iterations
 batch_size     = 64         # mini-batch transitions per update step
 lr             = 3e-4       # typical for PPO+Adam
 clip_epsilon   = 0.2
@@ -32,7 +32,7 @@ delta_bonus=1
 # 
 mini_batch     = 1024
 total_updates  = 1000
-VAL_LIMIT      = 50
+VAL_LIMIT      = 1
 BEST_OF_K      = 10          
 PROGRESS_EVERY = 10
 LOG_BOTH       = True

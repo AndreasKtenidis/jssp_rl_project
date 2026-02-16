@@ -73,9 +73,15 @@ def run_phase(phase_name):
     dataset = JSSPDataset(dataset_path)
     # Filter to ensure we only get the intended size (though files are usually size-pure)
     dataset.instances = dataset.filter_by_size((size_N, size_M))
-    print(f"[Data] Instances loaded: {len(dataset)}")
+    
+    # USER LIMIT: Take exactly 11 instances (10 for training, 1 for validation)
+    if len(dataset.instances) > 11:
+        dataset.instances = dataset.instances[:11]
+    
+    print(f"[Data] Instances loaded: {len(dataset)} (10 Train, 1 Val)")
 
-    split_dataset(dataset)
+    # 10/11 ratio ensures 10 go to train, 1 goes to val
+    split_dataset(dataset, train_ratio=0.909)
     dataloaders = get_dataloaders(dataset, batch_size=batch_size)
 
     # === Model Setup ===
@@ -103,13 +109,13 @@ def run_phase(phase_name):
         actor_critic=actor_critic,
         val_loader=dataloaders['val'],
         meta_iterations=meta_iterations,          
-        meta_batch_size=2,           
+        meta_batch_size=meta_batch_size,           
         inner_steps=inner_steps,               
         inner_lr=inner_lr,
         meta_lr=meta_lr,
         device=device,
         save_path=meta_ckpt_path,
-        inner_update_batch_size_size=2,
+        inner_update_batch_size_size=inner_update_batch_size,
         inner_switch_epoch=1,
         validate_every=1,            
     )
@@ -128,7 +134,7 @@ def run_phase(phase_name):
         train_dataset = dataset.get_split("train")  
         start_time = time.time()
         train_makespan, loss = train(
-            train_dataset, actor_critic, optimizer, device=device, update_batch_size_size=32, log_dir=log_dir
+            train_dataset, actor_critic, optimizer, device=device, update_batch_size_size=batch_size, log_dir=log_dir
         )
         epoch_time = time.time() - start_time
 
