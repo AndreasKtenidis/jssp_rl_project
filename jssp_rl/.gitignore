@@ -1,0 +1,41 @@
+# Result files and plots
+outputs/
+**/comparisons/
+**/plots/
+**/logs/
+**/gantt/
+**/cp_makespans.csv
+**/hybrid_experiment_results.csv
+**/taillard_rl_results.csv
+**/taillard_reptile_results.csv
+**/final_paper_results.md
+
+# Python / Environment
+**/__pycache__/
+*.py[cod]
+*$py.class
+**/myenv/
+.venv/
+env/
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Large binaries we want to keep locally but not on git (except specifically requested)
+# Note: we explicitly KEEP saved/ instances as requested by user
+# checkpoints/
+# checkpointsV2/
+*.pt
+*.pth
+!saved/meta_best.pth  # Keep core model if desired, but usually ignored
+!outputs/models/best_ppo_latest.pt # User might want to keep the final model
+
+# But generally exclude the outputs/ directory entirely to be safe
+outputs/
