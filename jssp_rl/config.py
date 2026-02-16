@@ -2,7 +2,7 @@
 
 # Reptile params
 meta_iterations = 10
-meta_batch_size = 64
+meta_batch_size = 10
 inner_steps = 3
 inner_lr = 1e-4
 meta_lr = 1e-3

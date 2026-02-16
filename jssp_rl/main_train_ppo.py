@@ -80,8 +80,8 @@ def run_phase(phase_name):
     
     print(f"[Data] Instances loaded: {len(dataset)} (10 Train, 1 Val)")
 
-    # 10/11 ratio ensures 10 go to train, 1 goes to val
-    split_dataset(dataset, train_ratio=0.909)
+    # 0.95 * 11 = 10.45 -> int(10.45) = 10. This ensures exactly 10 go to train, 1 to val.
+    split_dataset(dataset, train_ratio=0.95)
     dataloaders = get_dataloaders(dataset, batch_size=batch_size)
 
     # === Model Setup ===
