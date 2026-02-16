@@ -1,3 +1,8 @@
+# Exclude all data/model artifacts
+*.csv
+*.pth
+*.pt
+
 # Result files and plots
 outputs/
 **/comparisons/
@@ -32,8 +37,8 @@ ENV/
 # Note: we explicitly KEEP saved/ instances as requested by user
 # checkpoints/
 # checkpointsV2/
-*.pt
-*.pth
+
+# Redundant safety for weights
 !saved/meta_best.pth  # Keep core model if desired, but usually ignored
 !outputs/models/best_ppo_latest.pt # User might want to keep the final model
 
