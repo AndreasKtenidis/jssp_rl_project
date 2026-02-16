@@ -100,36 +100,50 @@ def run_phase(phase_name):
         actor_critic.load_state_dict(torch.load(latest_path, map_location=device))
 
 
-    # === Run Reptile Meta-Learning ===
-    meta_ckpt_path = os.path.join(base_dir, "saved", f"meta_best_{phase_name}.pth")
+    # === Check for Resume ===
+    latest_epoch_path = os.path.join(model_dir, f"latest_ppo_{phase_name}.pt")
+    start_epoch = 0
     
-    print(f"\n[Step 1] Running Reptile Meta-Training for {phase_name}...")
-    actor_critic = reptile_meta_train(
-        task_loader=dataloaders['train'],
-        actor_critic=actor_critic,
-        val_loader=dataloaders['val'],
-        meta_iterations=meta_iterations,          
-        meta_batch_size=meta_batch_size,           
-        inner_steps=inner_steps,               
-        inner_lr=inner_lr,
-        meta_lr=meta_lr,
-        device=device,
-        save_path=meta_ckpt_path,
-        inner_update_batch_size_size=inner_update_batch_size,
-        inner_switch_epoch=1,
-        validate_every=1,            
-    )
+    if os.path.exists(latest_epoch_path):
+        print(f"[Resume] Found checkpoint for {phase_name}. Loading...")
+        ckpt = torch.load(latest_epoch_path, map_location=device)
+        actor_critic.load_state_dict(ckpt['model_state_dict'])
+        optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        start_epoch = ckpt['epoch']
+        best_val_makespan = ckpt.get('val_makespan', float('inf'))
+        print(f"[Resume] Resuming from PPO Epoch {start_epoch+1}")
+    else:
+        # === Run Reptile Meta-Learning ===
+        meta_ckpt_path = os.path.join(base_dir, "saved", f"meta_best_{phase_name}.pth")
+        
+        print(f"\n[Step 1] Running Reptile Meta-Training for {phase_name}...")
+        actor_critic = reptile_meta_train(
+            task_loader=dataloaders['train'],
+            actor_critic=actor_critic,
+            val_loader=dataloaders['val'],
+            meta_iterations=meta_iterations,          
+            meta_batch_size=meta_batch_size,           
+            inner_steps=inner_steps,               
+            inner_lr=inner_lr,
+            meta_lr=meta_lr,
+            device=device,
+            save_path=meta_ckpt_path,
+            inner_update_batch_size_size=inner_update_batch_size,
+            inner_switch_epoch=1,
+            validate_every=1,            
+        )
 
-    actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
-    optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
+        actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
+        optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
+        best_val_makespan = float("inf")
 
     # === PPO Training ===
     print(f"\n[Step 2] Running PPO Training for {phase_name}...")
-    best_val_makespan = float("inf")
     all_makespans = []
     log_data = []
 
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         print(f"\n=== {phase_name} | PPO Epoch {epoch+1}/{num_epochs} ===")
         train_dataset = dataset.get_split("train")  
         start_time = time.time()
@@ -196,7 +210,8 @@ def run_phase(phase_name):
 
 if __name__ == "__main__":
     if RUN_FULL_CURRICULUM:
-        phases_to_run = ["Phase_1", "Phase_2", "Phase_3"]
+        from config import CURRICULUM_PHASES
+        phases_to_run = sorted(CURRICULUM_PHASES.keys())
     else:
         phases_to_run = [ACTIVE_PHASE]
 
