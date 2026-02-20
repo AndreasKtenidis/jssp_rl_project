@@ -3,7 +3,10 @@ import sys
 import pickle
 import subprocess
 import pandas as pd
+import time
 import torch
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 from data.dataset import JSSPDataset, split_dataset, get_dataloaders
 from env.jssp_environment import JSSPEnvironment
@@ -217,6 +220,9 @@ if __name__ == "__main__":
 
     for p in phases_to_run:
         run_phase(p)
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
 
     # === Final Evaluation (On Taillard) ===
     print("\n[Final Step] Running Benchmarks on Taillard...")
@@ -228,12 +234,10 @@ if __name__ == "__main__":
     # === NEW: Hybrid Experiment (RL + CP Warm Start) ===
     print("\n[Step 3] Running Hybrid RL+CP Benchmark...")
     checkpoint = os.path.join(model_dir, "best_ppo_latest.pt")
-    taillard_data = os.path.join(base_dir, "saved", "taillard_mixed_instances.pkl")
     
-    if os.path.exists(checkpoint) and os.path.exists(taillard_data):
-        # We give CP Cold and Hybrid a 20s limit for fair comparison
-        # Fix ratio 0.4 handles suggestions for first 40% of ops
-        run_hybrid_experiment(checkpoint, taillard_data, time_limit=20, fix_ratio=0.4)
+    if os.path.exists(checkpoint):
+        # Runs on all benchmark sets (FT, Taillard, DMU) with adaptive time limits
+        run_hybrid_experiment(checkpoint, fix_ratio=0.4)
     
     # === NEW: Generate Paper Summary Table ===
     print("\n[Step 4] Generating Paper-Ready Summary Results...")

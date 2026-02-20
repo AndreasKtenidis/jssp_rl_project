@@ -12,7 +12,7 @@ validate_every = 10
 # PPO / training
 epochs         = 3          # epochs per update
 num_epochs     = 90         # total training iterations
-batch_size     = 64         # mini-batch transitions per update step
+batch_size     = 32         # mini-batch transitions per update step
 lr             = 3e-4       # typical for PPO+Adam
 clip_epsilon   = 0.2
 gamma          = 0.99
@@ -54,4 +54,9 @@ CURRICULUM_PHASES = {
 
 # Training Control
 ACTIVE_PHASE = "Phase_1"  # Default
-RUN_FULL_CURRICULUM = True # Set to True to loop through all phases
+RUN_FULL_CURRICULUM = True # Set to loop through all phases
+
+# Derived: set of (jobs, machines) tuples that the model has been trained on
+# Used by evaluation scripts to split results into In-Distribution vs Generalization
+TRAINED_SIZES = {info["size"] for info in CURRICULUM_PHASES.values()}
+# -> {(6,6), (10,10), (15,15), (20,15), (20,20), (30,20), (50,20)}
