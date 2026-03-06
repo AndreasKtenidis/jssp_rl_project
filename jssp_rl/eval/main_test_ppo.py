@@ -34,9 +34,9 @@ def load_checkpoint(path):
 
 
 @torch.no_grad()
-def rollout_instance_once(times, machines, model, stochastic=False):
+def rollout_instance_once(times, machines, model, stochastic=False, precomputed_edge_index=None):
     """Single rollout. If stochastic=True, sample from Categorical(logits)."""
-    env = JSSPEnvironment(times, machines, device=device)
+    env = JSSPEnvironment(times, machines, device=device, use_shaping_rewards=False)
     env.reset()
     max_steps = env.num_jobs * env.num_machines + 50
     steps = 0
@@ -46,7 +46,7 @@ def rollout_instance_once(times, machines, model, stochastic=False):
         if steps > max_steps:
             return float("inf"), []
 
-        data = make_hetero_data(env, device)
+        data = make_hetero_data(env, device, precomputed_edge_index=precomputed_edge_index)
         logits, _ = model(data)
 
         avail = env.get_available_actions()
@@ -71,7 +71,11 @@ def rollout_instance_once(times, machines, model, stochastic=False):
 @torch.no_grad()
 def run_rl_on_instance(times, machines, model, best_of_k=1):
     """Run greedy once, and optionally best-of-K with stochastic sampling."""
-    greedy_ms, greedy_sched = rollout_instance_once(times, machines, model, stochastic=False)
+    # Pre-calculate static graph topology once per instance
+    from models.gin import HeteroGATv2
+    static_edge_index = HeteroGATv2.build_edge_index_dict(machines)
+
+    greedy_ms, greedy_sched = rollout_instance_once(times, machines, model, stochastic=False, precomputed_edge_index=static_edge_index)
 
     if best_of_k <= 1:
         return greedy_ms, greedy_sched, greedy_ms, greedy_sched
@@ -79,7 +83,7 @@ def run_rl_on_instance(times, machines, model, best_of_k=1):
     best_makespan = greedy_ms
     best_schedule = greedy_sched
     for _ in range(best_of_k):
-        makespan_k, schedule_k = rollout_instance_once(times, machines, model, stochastic=True)
+        makespan_k, schedule_k = rollout_instance_once(times, machines, model, stochastic=True, precomputed_edge_index=static_edge_index)
         if makespan_k < best_makespan:
             best_makespan = makespan_k
             best_schedule = schedule_k
@@ -95,6 +99,11 @@ def load_benchmark_instances(saved_dir):
         ("FT", "benchmark_ft.pkl"),
         ("Taillard", "benchmark_taillard.pkl"),
         ("DMU", "benchmark_dmu.pkl"),
+        ("ABZ", "benchmark_abz.pkl"),
+        ("Lawrence", "benchmark_la.pkl"),
+        ("ORB", "benchmark_orb.pkl"),
+        ("SWV", "benchmark_swv.pkl"),
+        ("YN", "benchmark_yn.pkl"),
     ]:
         path = os.path.join(saved_dir, filename)
         if os.path.exists(path):

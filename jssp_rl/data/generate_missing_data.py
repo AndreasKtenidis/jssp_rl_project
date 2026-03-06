@@ -23,7 +23,8 @@ def main():
         (6, 6), (10, 10), 
         (20, 15), (20, 20), 
         (30, 15), (30, 20), 
-        (50, 15), (50, 20)
+        (50, 15), (50, 20),
+        (100, 20)
     ]
     save_dir = "saved"
     os.makedirs(save_dir, exist_ok=True)
@@ -32,12 +33,8 @@ def main():
         filename = f"Synthetic_instances_{num_jobs}x{num_machines}_5000.pkl"
         full_path = os.path.join(save_dir, filename)
         
-        if os.path.exists(full_path):
-            print(f"Skipping {num_jobs}x{num_machines}, already exists.")
-            continue
-
-        print(f"Generating {num_jobs}x{num_machines} (500 instances)...")
-        dataset = [generate_random_jssp(num_jobs, num_machines) for _ in range(500)]
+        print(f"Generating {num_jobs}x{num_machines} (5000 instances)...")
+        dataset = [generate_random_jssp(num_jobs, num_machines) for _ in range(5000)]
         with open(full_path, "wb") as f:
             pickle.dump(dataset, f)
         print(f"Saved to {full_path}")

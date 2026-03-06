@@ -1,4 +1,52 @@
 # jssp_rl/cp/cp_solver.py
+"""
+Job Shop Scheduling Problem (JSSP) - CP-SAT Formulation
+=======================================================
+
+Problem Description:
+-------------------
+The Job Shop Scheduling Problem (JSSP) involves scheduling a set of jobs on a set of machines. 
+Each job consists of a sequence of operations that must be performed in a predefined order. 
+Each operation requires a specific machine for a fixed duration. The goal is to determine the 
+start times of all operations to minimize the total completion time (makespan).
+
+Mathematical Formulation:
+-------------------------
+
+1. Sets and Indices:
+   - J: Set of jobs {1, ..., n}, indexed by i.
+   - M: Set of machines {1, ..., m}, indexed by j.
+   - O_i,k: The k-th operation of job i.
+
+2. Parameters:
+   - p_i,k: Processing time (duration) of operation O_i,k.
+   - m_i,k: The machine required for operation O_i,k.
+
+3. Decision Variables:
+   - s_i,k: Start time of operation O_i,k (s_i,k >= 0).
+   - C_max: The makespan (total completion time).
+
+4. Constraints:
+   - Precedence Constraints: Within each job, an operation cannot start until the previous 
+     operation in its sequence is completed:
+     s_i,k + p_i,k <= s_i,k+1  (for k = 1, ..., m-1)
+
+   - Resource Constraints (No-Overlap): A machine can process only one operation at a time. 
+     For any two operations O_i,k and O_i',k' assigned to the same machine (m_i,k = m_i',k'):
+     (s_i,k + p_i,k <= s_i',k') OR (s_i',k' + p_i',k' <= s_i,k)
+
+   - Makespan Definition: The makespan must be at least as large as the completion time 
+     of every job's last operation:
+     C_max >= s_i,m + p_i,m  (for all jobs i)
+
+5. Objective:
+   - Minimize C_max (Makespan).
+
+Implementation Note:
+-------------------
+This solver uses Google OR-Tools CP-SAT, which models disjunctive constraints 
+using Interval Variables and the 'AddNoOverlap' constraint.
+"""
 from ortools.sat.python import cp_model
 from utils.logging_utils import plot_gantt_chart
 import os

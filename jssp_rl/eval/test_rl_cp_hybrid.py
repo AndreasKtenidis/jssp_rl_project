@@ -27,13 +27,17 @@ def get_rl_schedule(instance, model):
     machines = instance['machines'] if isinstance(instance['machines'], torch.Tensor) else torch.tensor(instance['machines'])
     times = times.to(device)
     machines = machines.to(device)
-    env = JSSPEnvironment(times, machines, device=device)
+    env = JSSPEnvironment(times, machines, device=device, use_shaping_rewards=False)
     env.reset()
+    
+    # Pre-calculate static graph topology once per instance
+    from models.gin import HeteroGATv2
+    static_edge_index = HeteroGATv2.build_edge_index_dict(env.machines)
 
     done = False
     step_count = 0
     while not done:
-        data = make_hetero_data(env, device)
+        data = make_hetero_data(env, device, precomputed_edge_index=static_edge_index)
         logits, _ = model(data)
 
         avail = env.get_available_actions()
@@ -107,6 +111,11 @@ def run_hybrid_experiment(checkpoint_path, time_limit_override=None, fix_ratio=0
         "FT": "benchmark_ft.pkl",
         "Taillard": "benchmark_taillard.pkl",
         "DMU": "benchmark_dmu.pkl",
+        "ABZ": "benchmark_abz.pkl",
+        "Lawrence": "benchmark_la.pkl",
+        "ORB": "benchmark_orb.pkl",
+        "SWV": "benchmark_swv.pkl",
+        "YN": "benchmark_yn.pkl",
     }
     
     if benchmarks_to_run is None:

@@ -61,56 +61,65 @@ def train(
 
             env = JSSPEnvironment(times, machines, device=device)  # keep device consistent
             env.reset()
+            
+            # Pre-calculate static graph topology once per instance
+            from models.gin import HeteroGATv2
+            static_edge_index = HeteroGATv2.build_edge_index_dict(env.machines)
 
             done = False
             ep_reward = 0.0
             ep_buffer = RolloutBuffer()
 
             while not done:
-                data = make_hetero_data(env, device)
                 with torch.no_grad():
+                    data = make_hetero_data(env, device, precomputed_edge_index=static_edge_index)
                     logits, value = actor_critic(data)  # logits: [num_ops]
 
-                if torch.isnan(logits).any():
-                    raise ValueError("NaNs in logits - check inputs/network.")
+                    if torch.isnan(logits).any():
+                        raise ValueError("NaNs in logits - check inputs/network.")
 
-                # available actions & mask
-                avail = env.get_available_actions()
-                mask = torch.zeros(data['op'].x.size(0), dtype=torch.bool, device=device)
-                if len(avail) > 0:
-                    mask[avail] = True
-                # always mask logits (even during warmup) for consistency
-                masked_logits = logits.masked_fill(~mask, -1e10)
+                    # available actions & mask
+                    avail = env.get_available_actions()
+                    mask = torch.zeros(data['op'].x.size(0), dtype=torch.bool, device=device)
+                    if len(avail) > 0:
+                        mask[avail] = True
+                    masked_logits = logits.masked_fill(~mask, -1e10)
 
-                if total_episodes < switch_epoch:
-                    # small heuristic warmup
-                    _, _, topk_actions, _ = select_top_k_actions(env, top_k=5, device=device)
-                    if topk_actions.numel() == 0:
-                        # fallback: if no heuristic found, use avail
-                        if len(avail) == 0:
-                            # should not happen in normal flow, so bail
-                            break
-                        action = int(avail[0])
-                    else:
-                        if torch.rand(1).item() < 0.1:
-                            action = int(topk_actions[torch.randint(len(topk_actions), (1,))])
+                    if total_episodes < switch_epoch:
+                        # small heuristic warmup
+                        _, _, topk_actions, _ = select_top_k_actions(env, top_k=5, device=device)
+                        if topk_actions.numel() == 0:
+                            if len(avail) == 0:
+                                break
+                            action = int(avail[0])
                         else:
-                            action = int(topk_actions[0])
-                    # log_prob from masked logits
-                    log_prob = torch.log_softmax(masked_logits, dim=0)[action]
-                else:
-                    dist = Categorical(logits=masked_logits)
-                    action = int(dist.sample().item())
-                    log_prob = dist.log_prob(torch.tensor(action, device=device))
+                            if torch.rand(1).item() < 0.1:
+                                action = int(topk_actions[torch.randint(len(topk_actions), (1,))])
+                            else:
+                                action = int(topk_actions[0])
+                        log_prob = torch.log_softmax(masked_logits, dim=0)[action]
+                    else:
+                        dist = Categorical(logits=masked_logits)
+                        action = int(dist.sample().item())
+                        log_prob = dist.log_prob(torch.tensor(action, device=device))
 
                 _, reward, done, _ = env.step(action)
                 ep_reward += reward
-                # save also the mask for this state
-                ep_buffer.add(data, action, reward, log_prob, value, done, mask=mask)
+                # Store only node features + edge dict reference (memory efficient)
+                ep_buffer.add(
+                    node_x=data['op'].x,
+                    edge_index_dict=static_edge_index,
+                    action=action,
+                    reward=reward,
+                    log_prob=log_prob,   # already detached (inside no_grad)
+                    value=value.squeeze(),
+                    done=done,
+                    mask=mask
+                )
 
-            # bootstrap value for last state
+            # bootstrap value for last state (reuse static edges)
             with torch.no_grad():
-                final_data = make_hetero_data(env, device)
+                final_data = make_hetero_data(env, device, precomputed_edge_index=static_edge_index)
                 _, final_value = actor_critic(final_data)
 
             ep_buffer.compute_returns_and_advantages(final_value.squeeze(), gamma, gae_lambda)
@@ -122,43 +131,33 @@ def train(
             print(f"[chunk {chunk_start//update_batch_size_size + 1} | Ep {total_episodes}] "
                   f"Makespan: {mk:.2f} | Total Reward: {ep_reward:.2f}")
 
-        print(f"\n=== PPO Update for chunk starting at {chunk_start} ===")
-
         # =========================
-        # [2] PPO UPDATES (PPO2-style)
+        # [2] PPO UPDATES — one instance at a time to avoid OOM on large graphs
         # =========================
+        ACCUM_STEPS = 4   # simulate batch_size=4 via gradient accumulation
         for epoch in range(epochs):
             epoch_loss_sum = 0.0
             epoch_batches  = 0
-            # entropy decay across epochs
             ent_coef = entropy_coef * (1.0 - epoch / max(1, epochs))
 
-            for b_idx, batch in enumerate(chunk_buffer.get_batches(batch_size)):
-                # buffer must return also masks_batch (last element)
+            optimizer.zero_grad()
+            accum_count = 0
+
+            for b_idx, batch in enumerate(chunk_buffer.get_batches(1, device=device)):  # batch_size=1
+                # buffer returns also masks_batch (last element)
                 (states, actions, old_log_probs, returns, advantages,
                  old_values, masks_batch) = batch
 
-                # to device
-                states        = states.to(device)
-                actions       = actions.to(device)
-                old_log_probs = old_log_probs.to(device)
-                returns       = returns.to(device)
-                advantages    = advantages.to(device)
-                old_values    = old_values.to(device)
-                masks_batch   = masks_batch.to(device)
-
-                # normalize targets
+                # normalize
                 if returns.numel() > 1:
                     returns = (returns - returns.mean()) / (returns.std(unbiased=False) + 1e-8)
                 if advantages.numel() > 1:
                     advantages = (advantages - advantages.mean()) / (advantages.std(unbiased=False) + 1e-8)
 
                 # Forward
-                logits, values = actor_critic(states)   # logits: [sum_nodes_in_batch]
-                # mask also in updates (same as rollout)
+                logits, values = actor_critic(states)
                 logits = logits.masked_fill(~masks_batch, -1e10)
 
-                # flatten targets
                 values     = values.view(-1)
                 returns    = returns.view(-1).detach()
                 old_values = old_values.view(-1).detach()
@@ -166,27 +165,24 @@ def train(
                 if torch.isnan(logits).any():
                     raise ValueError("NaNs in logits during update.")
 
-                # per-graph logprobs/entropy (not a huge Categorical across nodes)
+                # batch vector
                 if hasattr(states, 'batch') and states.batch is not None:
-                     batch_vec = states.batch
+                    batch_vec = states.batch
                 else:
-                     batch_vec = states['op'].batch  # HeteroData batch
+                    batch_vec = states['op'].batch
                 new_log_probs, entropy = per_graph_logprob_and_entropy(
                     logits.view(-1), batch_vec, actions
                 )
 
-                # KL approx, ratio, clip fraction
                 with torch.no_grad():
                     kl = (old_log_probs - new_log_probs).mean().abs()
                 ratio = (new_log_probs - old_log_probs).exp()
                 clipfrac = ((ratio - 1.0).abs() > clip_epsilon).float().mean()
 
-                # Policy loss (clipped)
                 surr1 = ratio * advantages
                 surr2 = torch.clamp(ratio, 1.0 - clip_epsilon, 1.0 + clip_epsilon) * advantages
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Value loss: PPO2-style value clipping + Huber
                 values_old = old_values.detach()
                 values_clipped = values_old + (values - values_old).clamp(-value_clip_range, value_clip_range)
                 v_loss1 = F.smooth_l1_loss(values,         returns, reduction='none')
@@ -195,13 +191,18 @@ def train(
 
                 loss = policy_loss + value_coef * value_loss - ent_coef * entropy.mean()
 
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(actor_critic.parameters(), max_norm=0.5)
-                optimizer.step()
+                # Gradient accumulation: scale loss, accumulate
+                (loss / ACCUM_STEPS).backward()
+                accum_count += 1
 
                 epoch_loss_sum += loss.item()
                 epoch_batches  += 1
+
+                if accum_count >= ACCUM_STEPS or (b_idx + 1) == len(chunk_buffer.node_features):
+                    torch.nn.utils.clip_grad_norm_(actor_critic.parameters(), max_norm=0.5)
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    accum_count = 0
 
                 # CSV diagnostics
                 log_train_metrics_to_csv(
@@ -221,14 +222,14 @@ def train(
                     print(
                         f"[train-gnn] KL={kl.item():.4f}  clipfrac={clipfrac.item():.3f}  "
                         f"ent={entropy.mean().item():.3f} (coef={ent_coef:.4f})  "
-                        f"adv_std={advantages.std().item():.3f}  "
+                        f"adv_std={advantages.std().item() if advantages.numel()>1 else 0:.3f}  "
                         f"v_loss={value_loss.item():.4f}  pi_loss={policy_loss.item():.4f}  "
-                        f"TOTAL={loss.item():.4f}  v_coef={value_coef:.3f}"
+                        f"TOTAL={loss.item():.4f}"
                     )
 
-                # early stop in this chunk if KL too large
                 if kl.item() > kl_threshold:
                     print(f"Early stop PPO epochs in this chunk: KL={kl.item():.4f} > {kl_threshold}")
+                    optimizer.zero_grad()
                     break
 
             # LR scheduler per-epoch

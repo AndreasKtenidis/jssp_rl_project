@@ -26,7 +26,7 @@ def reptile_meta_train(
     val_loader: Optional[Iterable] = None,
     save_path: str = "saved/meta_best.pth",
     
-    inner_update_batch_size_size: int = 4,
+    inner_update_batch_size: int = 4,
     inner_switch_epoch: int = 1,
     validate_every: int = 10,
 ) -> ActorCriticPPO:
@@ -74,7 +74,7 @@ def reptile_meta_train(
                     inner_optim,
                     device=device,
                     switch_epoch=inner_switch_epoch,
-                    update_batch_size_size=inner_update_batch_size_size,
+                    update_batch_size_size=inner_update_batch_size,
                 )
 
             # In-place  deltas: delta += (theta_task − theta_init)
@@ -82,7 +82,11 @@ def reptile_meta_train(
                 for i, (p_task, p_init) in enumerate(zip(task_model.parameters(), initial_params)):
                     delta_list[i].add_(p_task.data - p_init)
 
-            del task_model
+            # Explicitly free GPU memory before next inner task
+            task_model.cpu()
+            del task_model, inner_optim
+            torch.cuda.empty_cache()
+            import gc; gc.collect()
 
         # Outer update: theta <- theta + (meta_lr/meta_batch_size) * delta
         with torch.no_grad():

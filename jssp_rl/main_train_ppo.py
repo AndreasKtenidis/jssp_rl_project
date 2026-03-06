@@ -38,6 +38,7 @@ except ImportError:
 from config import (
     lr, num_epochs, batch_size,
     VAL_LIMIT, BEST_OF_K, LOG_BOTH, PROGRESS_EVERY,
+    TRAIN_INSTANCES_PER_EPOCH,
     meta_iterations, meta_batch_size, inner_steps, inner_lr, meta_lr,
     inner_update_batch_size, validate_every,
     CURRICULUM_PHASES, ACTIVE_PHASE, RUN_FULL_CURRICULUM
@@ -77,15 +78,18 @@ def run_phase(phase_name):
     # Filter to ensure we only get the intended size (though files are usually size-pure)
     dataset.instances = dataset.filter_by_size((size_N, size_M))
     
-    # USER LIMIT: Take exactly 11 instances (10 for training, 1 for validation)
-    if len(dataset.instances) > 11:
-        dataset.instances = dataset.instances[:11]
-    
-    print(f"[Data] Instances loaded: {len(dataset)} (10 Train, 1 Val)")
+    print(f"[Data] Total instances in file: {len(dataset)}")
 
-    # 0.95 * 11 = 10.45 -> int(10.45) = 10. This ensures exactly 10 go to train, 1 to val.
-    split_dataset(dataset, train_ratio=0.95)
-    dataloaders = get_dataloaders(dataset, batch_size=batch_size)
+    # FIXED SPLIT: First 50 instances are for validation (ensures stability across restarts)
+    # The rest (4950) are for the training pool
+    val_subset = dataset.instances[:50]
+    train_pool = dataset.instances[50:]
+    
+    # Create a fixed validation loader
+    from torch_geometric.loader import DataLoader as PyGDataLoader
+    val_loader = PyGDataLoader(val_subset, batch_size=batch_size, shuffle=False)
+
+    print(f"[Data] Loaded {len(train_pool)} train instances and {len(val_subset)} fixed validation instances.")
 
     # === Model Setup ===
     actor_critic = ActorCriticPPO(
@@ -120,23 +124,29 @@ def run_phase(phase_name):
         # === Run Reptile Meta-Learning ===
         meta_ckpt_path = os.path.join(base_dir, "saved", f"meta_best_{phase_name}.pth")
         
-        print(f"\n[Step 1] Running Reptile Meta-Training for {phase_name}...")
-        actor_critic = reptile_meta_train(
-            task_loader=dataloaders['train'],
-            actor_critic=actor_critic,
-            val_loader=dataloaders['val'],
-            meta_iterations=meta_iterations,          
-            meta_batch_size=meta_batch_size,           
-            inner_steps=inner_steps,               
-            inner_lr=inner_lr,
-            meta_lr=meta_lr,
-            device=device,
-            save_path=meta_ckpt_path,
-            inner_update_batch_size_size=inner_update_batch_size,
-            inner_switch_epoch=1,
-            validate_every=1,            
-        )
+        if os.path.exists(meta_ckpt_path):
+            print(f"[Skip] Found meta checkpoint for {phase_name} at {meta_ckpt_path}. Skipping Step 1.")
+        else:
+            print(f"\n[Step 1] Running Reptile Meta-Training for {phase_name}...")
+            # Define meta_train_subset (e.g., first 100 instances from train_pool)
+            meta_train_subset = train_pool[:meta_iterations * meta_batch_size]
+            actor_critic = reptile_meta_train(
+                task_loader=meta_train_subset,
+                actor_critic=actor_critic,
+                val_loader=val_loader,
+                meta_iterations=meta_iterations,          
+                meta_batch_size=meta_batch_size,           
+                inner_steps=inner_steps,               
+                inner_lr=inner_lr,
+                meta_lr=meta_lr,
+                device=device,
+                save_path=meta_ckpt_path,
+                inner_update_batch_size=inner_update_batch_size,
+                inner_switch_epoch=1,
+                validate_every=1,            
+            )
 
+        print(f"[Load] Loading best meta-model from {meta_ckpt_path}")
         actor_critic.load_state_dict(torch.load(meta_ckpt_path, map_location=device))
         optimizer = torch.optim.Adam(actor_critic.parameters(), lr=lr)
         best_val_makespan = float("inf")
@@ -148,16 +158,23 @@ def run_phase(phase_name):
 
     for epoch in range(start_epoch, num_epochs):
         print(f"\n=== {phase_name} | PPO Epoch {epoch+1}/{num_epochs} ===")
-        train_dataset = dataset.get_split("train")  
+        
+        # Dynamic sampling from the training pool
+        import random
+        if len(train_pool) > TRAIN_INSTANCES_PER_EPOCH:
+            epoch_train_dataset = random.sample(train_pool, TRAIN_INSTANCES_PER_EPOCH)
+        else:
+            epoch_train_dataset = train_pool
+
         start_time = time.time()
         train_makespan, loss = train(
-            train_dataset, actor_critic, optimizer, device=device, update_batch_size_size=batch_size, log_dir=log_dir
+            epoch_train_dataset, actor_critic, optimizer, device=device, update_batch_size_size=batch_size, log_dir=log_dir
         )
         epoch_time = time.time() - start_time
 
         actor_critic.eval()
         val_makespan_greedy = validate_ppo(
-            dataloader=dataloaders['val'],
+            dataloader=val_loader,
             actor_critic=actor_critic,
             device=device,
             limit_instances=VAL_LIMIT,
@@ -167,15 +184,13 @@ def run_phase(phase_name):
 
         if LOG_BOTH and BEST_OF_K > 1:
             val_makespan_best = validate_ppo(
-                dataloader=dataloaders['val'],
+                dataloader=val_loader,
                 actor_critic=actor_critic,
                 device=device,
                 limit_instances=VAL_LIMIT,
                 best_of_k=BEST_OF_K,
                 progress_every=PROGRESS_EVERY,
             )
-        else:
-            val_makespan_best = val_makespan_greedy
         actor_critic.train()
 
         all_makespans.append(train_makespan)

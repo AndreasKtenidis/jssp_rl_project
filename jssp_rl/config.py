@@ -2,17 +2,17 @@
 
 # Reptile params
 meta_iterations = 10
-meta_batch_size = 10
+meta_batch_size = 10          # restored — 10 tasks per Reptile iteration
 inner_steps = 3
 inner_lr = 1e-4
 meta_lr = 1e-3
-inner_update_batch_size = 16
+inner_update_batch_size = 8          # restored — chunk size for inner PPO
 validate_every = 10
 
 # PPO / training
 epochs         = 3          # epochs per update
 num_epochs     = 90         # total training iterations
-batch_size     = 32         # mini-batch transitions per update step
+batch_size     = 32         # chunk size for rollout collection (PPO update is always 1-at-a-time)
 lr             = 3e-4       # typical for PPO+Adam
 clip_epsilon   = 0.2
 gamma          = 0.99
@@ -35,6 +35,7 @@ total_updates  = 1000
 VAL_LIMIT      = 1
 BEST_OF_K      = 10          
 PROGRESS_EVERY = 10
+TRAIN_INSTANCES_PER_EPOCH = 10  # Sample 10 instances from the 5000 pool each epoch
 LOG_BOTH       = True
 SAVE_GANTT_FOR_BEST = True
 use_est_boost = True   
@@ -50,6 +51,7 @@ CURRICULUM_PHASES = {
     "Phase_5": {"size": (20, 20), "file": "Synthetic_instances_20x20_5000.pkl"},
     "Phase_6": {"size": (30, 20), "file": "Synthetic_instances_30x20_5000.pkl"},
     "Phase_7": {"size": (50, 20), "file": "Synthetic_instances_50x20_5000.pkl"},
+    "Phase_8": {"size": (100, 20), "file": "Synthetic_instances_100x20_5000.pkl"},
 }
 
 # Training Control
@@ -59,4 +61,4 @@ RUN_FULL_CURRICULUM = True # Set to loop through all phases
 # Derived: set of (jobs, machines) tuples that the model has been trained on
 # Used by evaluation scripts to split results into In-Distribution vs Generalization
 TRAINED_SIZES = {info["size"] for info in CURRICULUM_PHASES.values()}
-# -> {(6,6), (10,10), (15,15), (20,15), (20,20), (30,20), (50,20)}
+# -> {(6,6), (10,10), (15,15), (20,15), (20,20), (30,20), (50,20), (100,20)}

@@ -2,6 +2,8 @@
 *.csv
 *.pth
 *.pt
+*.pkl
+*.json
 
 # Result files and plots
 outputs/
@@ -33,14 +35,11 @@ ENV/
 .vscode/
 .idea/
 
-# Large binaries we want to keep locally but not on git (except specifically requested)
-# Note: we explicitly KEEP saved/ instances as requested by user
-# checkpoints/
-# checkpointsV2/
+# Large binaries and checkpoints
+checkpoints/
+checkpointsV2/
+saved/
 
-# Redundant safety for weights
-!saved/meta_best.pth  # Keep core model if desired, but usually ignored
-!outputs/models/best_ppo_latest.pt # User might want to keep the final model
+# Explicitly KEEP specific config or small meta files if needed
+!saved/benchmark_bks.json  # Example: keep if this is a config
 
-# But generally exclude the outputs/ directory entirely to be safe
-outputs/

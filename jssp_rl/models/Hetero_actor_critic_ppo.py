@@ -27,15 +27,17 @@ class ActorCriticPPO(nn.Module):
         )
 
     def forward(self, data):
-        node_embeddings = self.gnn(data.x_dict, data.edge_index_dict)
+        # Extract batch vector for node type 'op' if it exists (for batched data)
+        batch_op = getattr(data['op'], 'batch', None)
+        
+        node_embeddings = self.gnn(data.x_dict, data.edge_index_dict, batch_op=batch_op)
 
         action_logits = self.actor_mlp(node_embeddings).squeeze(-1)
 
-        batch = getattr(data['op'], 'batch', None)
-        if batch is None:
-            batch = torch.zeros(node_embeddings.size(0), dtype=torch.long, device=node_embeddings.device)
+        if batch_op is None:
+            batch_op = torch.zeros(node_embeddings.size(0), dtype=torch.long, device=node_embeddings.device)
 
-        graph_embeddings = global_mean_pool(node_embeddings, batch)
+        graph_embeddings = global_mean_pool(node_embeddings, batch_op)
         state_values = self.critic_mlp(graph_embeddings)
         return action_logits, state_values
 

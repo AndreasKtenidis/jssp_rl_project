@@ -32,21 +32,19 @@ class HeteroGATv2(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.output_proj = nn.Linear(hidden_dim, out_channels)
 
-    def forward(self, x_dict, edge_index_dict):
+    def forward(self, x_dict, edge_index_dict, batch_op=None):
         x_op = self.input_proj(x_dict['op'])
-
+        
         # --- First Layer with Residual ---
-        x_dict = {'op': x_op}
-        h1 = self.conv1(x_dict, edge_index_dict)['op']
-        h1 = self.norm1(h1, batch=torch.zeros(h1.size(0), dtype=torch.long, device=h1.device))
+        h1 = self.conv1({'op': x_op}, edge_index_dict)['op']
+        h1 = self.norm1(h1, batch=batch_op)
         h1 = F.gelu(h1)
         h1 = self.dropout(h1)
         x1 = x_op + h1  # Residual
 
         # --- Second Layer with Residual ---
-        x_dict = {'op': x1}
-        h2 = self.conv2(x_dict, edge_index_dict)['op']
-        h2 = self.norm2(h2, batch=torch.zeros(h2.size(0), dtype=torch.long, device=h2.device))
+        h2 = self.conv2({'op': x1}, edge_index_dict)['op']
+        h2 = self.norm2(h2, batch=batch_op)
         h2 = F.gelu(h2)
         h2 = self.dropout(h2)
         x2 = x1 + h2  # Residual
