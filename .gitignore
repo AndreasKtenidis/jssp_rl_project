@@ -1,7 +1,50 @@
-__pycache__/
-*.pyc
+# Exclude all data/model artifacts
 *.csv
-*.png
+*.pth
+*.pt
+
+# Result files and plots
+outputs/
+**/comparisons/
+**/plots/
+**/logs/
+**/gantt/
+**/cp_makespans.csv
+**/hybrid_experiment_results.csv
+**/taillard_rl_results.csv
+**/taillard_reptile_results.csv
+**/final_paper_results.md
+
+# Python / Environment
+**/__pycache__/
+*.py[cod]
+*$py.class
+**/myenv/
+.venv/
+env/
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Large binaries and checkpoints
 checkpoints/
 checkpointsV2/
-*.log
+
+# Large Synthetic instances (exceeding reasonable push size)
+jssp_rl/saved/Synthetic_instances_*.pkl
+saved/Synthetic_instances_*.pkl
+
+# Explicitly KEEP specific config, benchmarks or small models
+!jssp_rl/saved/*.pth
+!jssp_rl/saved/benchmark_*.pkl
+!jssp_rl/saved/taillard_*.pkl
+!jssp_rl/saved/synthetic_500_instances.pkl
+!jssp_rl/outputs/models/*.pt
+!jssp_rl/saved/benchmark_bks.json
