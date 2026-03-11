@@ -37,13 +37,15 @@ ENV/
 checkpoints/
 checkpointsV2/
 
-# Large Synthetic instances (exceeding reasonable push size)
-saved/Synthetic_instances_*.pkl
+# SPECIFCIALLY EXCLUDE ONLY THE FILE > 100MB
+jssp_rl/saved/Synthetic_instances_100x20_5000.pkl
+saved/Synthetic_instances_100x20_5000.pkl
 
-# Explicitly KEEP specific config, benchmarks or small models
-!saved/*.pth
-!saved/benchmark_*.pkl
-!saved/taillard_*.pkl
-!saved/synthetic_500_instances.pkl
-!outputs/models/*.pt
-!saved/benchmark_bks.json
+# Keep all other saved artifacts
+!jssp_rl/saved/*.pth
+!jssp_rl/saved/*.pkl
+!jssp_rl/saved/benchmark_*.pkl
+!jssp_rl/saved/taillard_*.pkl
+!jssp_rl/saved/synthetic_500_instances.pkl
+!jssp_rl/outputs/models/*.pt
+!jssp_rl/saved/benchmark_bks.json
