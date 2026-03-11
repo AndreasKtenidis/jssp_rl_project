@@ -3,8 +3,6 @@
 *.pth
 *.pt
 
-
-
 # Result files and plots
 outputs/
 **/comparisons/
@@ -38,8 +36,14 @@ ENV/
 # Large binaries and checkpoints
 checkpoints/
 checkpointsV2/
-saved/
 
-# Explicitly KEEP specific config or small meta files if needed
-!saved/benchmark_bks.json  # Example: keep if this is a config
+# Large Synthetic instances (exceeding reasonable push size)
+saved/Synthetic_instances_*.pkl
 
+# Explicitly KEEP specific config, benchmarks or small models
+!saved/*.pth
+!saved/benchmark_*.pkl
+!saved/taillard_*.pkl
+!saved/synthetic_500_instances.pkl
+!outputs/models/*.pt
+!saved/benchmark_bks.json
