@@ -2,8 +2,8 @@
 *.csv
 *.pth
 *.pt
-*.pkl
-*.json
+
+
 
 # Result files and plots
 outputs/
