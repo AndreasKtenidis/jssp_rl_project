@@ -21,9 +21,8 @@ outputs/
 *$py.class
 **/myenv/
 .venv/
-env/
 venv/
-ENV/
+# ENV/  <-- Commented to avoid case-insensitive match with env/
 
 # Jupyter
 .ipynb_checkpoints
@@ -35,7 +34,6 @@ ENV/
 
 # Large binaries and checkpoints
 checkpoints/
-checkpointsV2/
 
 # Keep small saved artifacts FIRST
 !saved/*.pth
@@ -43,9 +41,15 @@ checkpointsV2/
 !saved/benchmark_*.pkl
 !saved/taillard_*.pkl
 !saved/synthetic_500_instances.pkl
-!outputs/models/*.pt
 !saved/benchmark_bks.json
+
+# ALLOW SPECIFIC DIRECTORIES
+!env/
+!outputs/
+!outputs/models/
+!outputs/models/*.pt
 
 # SPECIFICALLY EXCLUDE LARGE FILES AT THE END TO OVERRIDE THE ALLOW RULES
 saved/Synthetic_instances_100x20_5000.pkl
 Contribution_Title.pdf
+
