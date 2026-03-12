@@ -48,3 +48,4 @@ checkpointsV2/
 
 # SPECIFICALLY EXCLUDE LARGE FILES AT THE END TO OVERRIDE THE ALLOW RULES
 saved/Synthetic_instances_100x20_5000.pkl
+Contribution_Title.pdf
