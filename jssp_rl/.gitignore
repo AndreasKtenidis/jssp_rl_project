@@ -22,7 +22,7 @@ outputs/
 **/myenv/
 .venv/
 venv/
-# ENV/  <-- Commented to avoid case-insensitive match with env/
+# ENV/  
 
 # Jupyter
 .ipynb_checkpoints
