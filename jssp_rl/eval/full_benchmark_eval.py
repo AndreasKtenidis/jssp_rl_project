@@ -35,6 +35,7 @@ BENCHMARKS = {
     "ORB":      "benchmark_orb.pkl",
     "SWV":      "benchmark_swv.pkl",
     "YN":       "benchmark_yn.pkl",
+    "DacolTeppan2022": "benchmark_DacolTeppan2022.pkl",
 }
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -191,9 +192,18 @@ def main():
     model.eval()
 
     all_rows = []
+    
+    # Allow filtering via ENV
+    only_bench = os.environ.get("BENCH_ONLY")
+    
     for bm_name, bm_file in BENCHMARKS.items():
+        if only_bench and bm_name != only_bench:
+            continue
+            
         path = os.path.join(saved_dir, bm_file)
-        if not os.path.exists(path): continue
+        if not os.path.exists(path):
+            print(f"[SKIP] {bm_file} not found.")
+            continue
         with open(path, "rb") as f: instances = pickle.load(f)
 
         out_bm = os.path.join(eval_dir, f"full_benchmark_adv_{bm_name.lower()}.csv")
@@ -271,8 +281,21 @@ def main():
             bm_rows.append(row_data); all_rows.append(row_data)
             pd.DataFrame(bm_rows).to_csv(out_bm, index=False)
 
-    df_all = pd.DataFrame(all_rows)
-    df_all.to_csv(os.path.join(eval_dir, "full_benchmark_adv_all.csv"), index=False)
-    print("\n✅ Final advanced results saved.")
+    # Summary file update
+    final_all_path = os.path.join(eval_dir, "full_benchmark_adv_all.csv")
+    if os.path.exists(final_all_path) and only_bench:
+        # If we ran only one bench, append to existing or merge
+        try:
+            df_existing = pd.read_csv(final_all_path)
+            # Remove existing rows for this benchmark to avoid duplicates
+            df_existing = df_existing[df_existing["Benchmark"] != only_bench]
+            df_all = pd.concat([df_existing, pd.DataFrame(all_rows)], ignore_index=True)
+            df_all.to_csv(final_all_path, index=False)
+            print(f"\n✅ Updated summary in {final_all_path}")
+        except:
+            pd.DataFrame(all_rows).to_csv(final_all_path, index=False)
+    else:
+        pd.DataFrame(all_rows).to_csv(final_all_path, index=False)
+        print(f"\n✅ Final advanced results saved to {final_all_path}")
 
 if __name__ == "__main__": main()
