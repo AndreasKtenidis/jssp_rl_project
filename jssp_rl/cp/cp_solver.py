@@ -47,7 +47,7 @@ class JSSPSolutionCallback(cp_model.CpSolverSolutionCallback):
 def find_critical_path(schedule):
     """
     Identifies operations on the critical path of a given schedule.
-    schedule: List[dict] with job_id, operation_index, machine, start_time, end_time
+     schedule: List[dict] with job_id, operation_index, machine, start_time, end_time
     Returns: Set of (job_id, op_index)
     """
     if not schedule: return set()
@@ -55,44 +55,49 @@ def find_critical_path(schedule):
     makespan = max(entry['end_time'] for entry in schedule)
     lookup = {(entry['job_id'], entry['operation_index']): entry for entry in schedule}
     
-    # Machine sequences
+    # Machine sequences and index lookup for O(1) predecessor access
     machine_map = {}
     for entry in schedule:
         machine_map.setdefault(entry['machine'], []).append(entry)
+    
+    op_to_m_idx = {}
     for m in machine_map:
         machine_map[m] = sorted(machine_map[m], key=lambda x: x['start_time'])
+        for idx, entry in enumerate(machine_map[m]):
+            op_to_m_idx[(entry['job_id'], entry['operation_index'])] = idx
 
     cp_ops = set()
     visited = set()
+    stack = []
 
-    def traceback(curr):
+    # Start from any op that ends at makespan
+    for entry in schedule:
+        if entry['end_time'] == makespan:
+            stack.append(entry)
+
+    while stack:
+        curr = stack.pop()
         key = (curr['job_id'], curr['operation_index'])
-        if key in visited: return
+        if key in visited: continue
         visited.add(key)
         cp_ops.add(key)
         
         s = curr['start_time']
-        if s == 0: return
+        if s == 0: continue
         
         # 1. Job precedence check
         if curr['operation_index'] > 0:
             prev_j = lookup.get((curr['job_id'], curr['operation_index'] - 1))
             if prev_j and prev_j['end_time'] == s:
-                traceback(prev_j)
+                stack.append(prev_j)
         
         # 2. Machine precedence check
-        m_ops = machine_map[curr['machine']]
-        idx = m_ops.index(curr)
-        if idx > 0:
-            prev_m = m_ops[idx-1]
+        idx = op_to_m_idx.get(key)
+        if idx is not None and idx > 0:
+            prev_m = machine_map[curr['machine']][idx - 1]
             if prev_m['end_time'] == s:
-                traceback(prev_m)
+                stack.append(prev_m)
 
-    # Start from any op that ends at makespan
-    for entry in schedule:
-        if entry['end_time'] == makespan:
-            traceback(entry)
-            
     return cp_ops
 
 def solve_instance_your_version(times, machines, time_limit_s: float = 10.0, **kwargs):

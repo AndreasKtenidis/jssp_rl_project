@@ -55,6 +55,7 @@ BENCHMARKS = {
     "ORB":      "benchmark_orb.pkl",
     "SWV":      "benchmark_swv.pkl",
     "YN":       "benchmark_yn.pkl",
+    "DacolTeppan2022": "benchmark_DacolTeppan2022.pkl",
 }
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -173,39 +174,45 @@ def find_critical_path_from_schedule(schedule, excluded=None):
     machine_map = {}
     for entry in active:
         machine_map.setdefault(entry['machine'], []).append(entry)
+    
+    op_to_m_idx = {}
     for m in machine_map:
         machine_map[m] = sorted(machine_map[m], key=lambda x: x['start_time'])
+        for idx, entry in enumerate(machine_map[m]):
+            op_to_m_idx[(entry['job_id'], entry['operation_index'])] = idx
 
     cp_ops  = set()
     visited = set()
+    stack   = []
 
-    def traceback(curr):
+    for entry in active:
+        if entry['end_time'] == makespan:
+            stack.append(entry)
+
+    while stack:
+        curr = stack.pop()
         key = (curr['job_id'], curr['operation_index'])
         if key in visited or key in excluded:
-            return
+            continue
         visited.add(key)
         cp_ops.add(key)
+        
         s = curr['start_time']
         if s == 0:
-            return
+            continue
+            
         # Job predecessor
         if curr['operation_index'] > 0:
             prev_j = lookup.get((curr['job_id'], curr['operation_index'] - 1))
             if prev_j and prev_j['end_time'] == s:
-                traceback(prev_j)
+                stack.append(prev_j)
+                
         # Machine predecessor
-        m_ops = machine_map.get(curr['machine'], [])
-        idx   = next((i for i, e in enumerate(m_ops) if
-                      e['job_id'] == curr['job_id'] and
-                      e['operation_index'] == curr['operation_index']), -1)
-        if idx > 0:
-            prev_m = m_ops[idx - 1]
+        idx = op_to_m_idx.get(key)
+        if idx is not None and idx > 0:
+            prev_m = machine_map[curr['machine']][idx - 1]
             if prev_m['end_time'] == s:
-                traceback(prev_m)
-
-    for entry in active:
-        if entry['end_time'] == makespan:
-            traceback(entry)
+                stack.append(prev_m)
 
     return cp_ops
 
@@ -367,7 +374,13 @@ def main():
 
     all_rows = []
 
+    # Allow filtering via ENV
+    only_bench = os.environ.get("BENCH_ONLY")
+
     for bm_name, bm_file in BENCHMARKS.items():
+        if only_bench and bm_name != only_bench:
+            continue
+
         path = os.path.join(saved_dir, bm_file)
         if not os.path.exists(path):
             print(f"[SKIP] {bm_file} not found.")
@@ -475,9 +488,21 @@ def main():
             pd.DataFrame(bm_rows).to_csv(out_file, index=False)
             
 
-    df_all = pd.DataFrame(all_rows)
-    df_all.to_csv(os.path.join(eval_dir, "cplns_all.csv"), index=False)
-    print("All CP-LNS results saved.")
+    # Summary file update
+    final_all_path = os.path.join(eval_dir, "cplns_all.csv")
+    if os.path.exists(final_all_path) and only_bench:
+        try:
+            df_existing = pd.read_csv(final_all_path)
+            # Remove existing rows for this benchmark to avoid duplicates
+            df_existing = df_existing[df_existing["Benchmark"] != only_bench]
+            df_all = pd.concat([df_existing, pd.DataFrame(all_rows)], ignore_index=True)
+            df_all.to_csv(final_all_path, index=False)
+            print(f"\n✅ Updated summary in {final_all_path}")
+        except:
+            pd.DataFrame(all_rows).to_csv(final_all_path, index=False)
+    else:
+        pd.DataFrame(all_rows).to_csv(final_all_path, index=False)
+        print(f"\n✅ Final results saved to {final_all_path}")
 
 
 if __name__ == "__main__":
