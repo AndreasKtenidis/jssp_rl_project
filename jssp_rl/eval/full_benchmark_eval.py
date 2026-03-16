@@ -222,6 +222,12 @@ def main():
             if name in existing_instances: continue
 
             N, M = (inst["times"].shape if hasattr(inst["times"], "shape") else (len(inst["times"]), len(inst["times"][0])))
+            
+            # Skip massive intractable instances due to RL computational bottleneck
+            if N * M > 2000:
+                print(f"\n[{i+1:3d}] {name} ({N}x{M}) skipped (N*M > 2,000)", flush=True)
+                continue
+                
             bks = inst.get("bks", -1)
             tl = cp_time_limit(N, M)
             print(f"\n[{i+1:3d}] {name} ({N}x{M}) BKS={bks} TL={tl}s", flush=True)

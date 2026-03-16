@@ -1,22 +1,16 @@
 """
-reconstruct_critical_eval.py
+reconstruct_critical_eval_v2.py
 ==========================================================
-Critical-Path Large Neighbourhood Search (CP-LNS) Evaluator
+Critical-Path Large Neighbourhood Search (CP-LNS) Evaluator - V2
 
-Strategy:
+Strategy V2 (90% Reconstruct / 10% Fixed):
  1. Get RL Best-of-K solution as starting point.
- 2. Iteratively extract Critical Paths from the RL schedule until
-    the target % of total operations is covered.
- 3. Take the 10% operations with smallest processing_time from the
-    remaining (non-critical) operations.
- 4. The "Reconstruct Set" = Critical Ops + Easy Ops.
- 5. Pass to CP-SAT: Reconstruct Set is free, rest is FIXED.
-
-Experiments (Reconstruct% = critical% + easy%):
-  Mode A: 50% CP + 10% easy = 60% reconstruct / 40% fixed
-  Mode B: 60% CP + 10% easy = 70% reconstruct / 30% fixed
-  Mode C: 70% CP + 10% easy = 80% reconstruct / 20% fixed
-  Mode D: 80% CP + 10% easy = 90% reconstruct / 10% fixed
+ 2. Select 10% of total operations dynamically as "easy" (smallest processing time).
+ 3. Iteratively extract Critical Paths from the RL schedule until
+    the total reconstructed set reaches 80% coverage (10% initial easy + 70% CP).
+ 4. Take another 10% of total operations as "easy" from the remaining 20%.
+ 5. The "Reconstruct Set" = 90% total.
+ 6. Pass to CP-SAT: Reconstruct Set is free, rest is FIXED.
 
 Output format matches full_benchmark_eval.py.
 """
@@ -42,9 +36,10 @@ from torch_geometric.data import HeteroData
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 BEST_OF_K = 10
-EASY_RATIO = 0.10   # 10% of remaining ops selected as "easy"
-CRITICAL_TARGETS = [0.50, 0.60, 0.70, 0.80]  # % of total ops from critical paths
-MODE_LABELS = {0.50: "CP50", 0.60: "CP60", 0.70: "CP70", 0.80: "CP80"}
+INITIAL_EASY_RATIO = 0.10
+TARGET_CP_PLUS_EASY = 0.80
+FINAL_EASY_RATIO = 0.10
+MODE_LABEL = "V2_90pct"
 
 BENCHMARKS = {
     "FT":       "benchmark_ft.pkl",
@@ -217,41 +212,47 @@ def find_critical_path_from_schedule(schedule, excluded=None):
     return cp_ops
 
 
-def select_reconstruct_ops(schedule, times_np, machines_np, critical_target: float):
+def select_reconstruct_ops(schedule, times_np, machines_np):
     """
-    Iteratively extract critical paths until `critical_target` fraction of total ops.
-    Then add EASY_RATIO of remaining ops (by smallest processing_time).
-
+    V2 Strategy:
+    1. Initial 10% easy operations (smallest processing time).
+    2. Iteratively extract critical paths until reconstruct_set has 80% of total ops.
+    3. Add 10% final easy operations from the remaining operations.
+    
     Returns:
         reconstruct_set : set of (job_id, op_index) that CP is free to change
         fixed_set       : all others (hard-fixed to RL start times)
     """
     num_jobs, num_machines = times_np.shape
     total_ops              = num_jobs * num_machines
-    target_cp_count        = int(total_ops * critical_target)
-
-    selected_cp = set()
-    remaining   = set((e['job_id'], e['operation_index']) for e in schedule)
-
-    # Iterative critical-path extraction
-    while len(selected_cp) < target_cp_count and remaining:
-        cp_path = find_critical_path_from_schedule(schedule, excluded=selected_cp)
+    
+    # Sort all operations by processing time
+    all_ops_list = [(j, o) for j in range(num_jobs) for o in range(num_machines)]
+    all_ops_list.sort(key=lambda op: int(times_np[op[0], op[1]]))
+    
+    # 1. Initial 10% easy ops
+    initial_easy_count = int(total_ops * INITIAL_EASY_RATIO)
+    selected_initial_easy = set(all_ops_list[:initial_easy_count])
+    
+    reconstruct_set = set(selected_initial_easy)
+    
+    # 2. Iterative critical paths
+    target_cp_plus_easy_count = int(total_ops * TARGET_CP_PLUS_EASY)
+    
+    while len(reconstruct_set) < target_cp_plus_easy_count:
+        cp_path = find_critical_path_from_schedule(schedule, excluded=reconstruct_set)
         if not cp_path:
             break
-        selected_cp.update(cp_path)
-        remaining -= cp_path
-        # Clamp to target
-        if len(selected_cp) >= target_cp_count:
-            break
-
-    # Easy operations: smallest processing_time from remaining
-    easy_count = int(total_ops * EASY_RATIO)
-    remaining_list = list(remaining)
-    remaining_list.sort(key=lambda op: int(times_np[op[0], op[1]]))
-    selected_easy = set(remaining_list[:easy_count])
-
-    reconstruct_set = selected_cp | selected_easy
-    fixed_set       = set((e['job_id'], e['operation_index']) for e in schedule) - reconstruct_set
+        reconstruct_set.update(cp_path)
+        
+    # 3. Final 10% easy ops from the remaining
+    remaining_list = [op for op in all_ops_list if op not in reconstruct_set]
+    final_easy_count = int(total_ops * FINAL_EASY_RATIO)
+    selected_final_easy = set(remaining_list[:final_easy_count])
+    
+    reconstruct_set.update(selected_final_easy)
+    
+    fixed_set = set(all_ops_list) - reconstruct_set
     return reconstruct_set, fixed_set
 
 
@@ -389,7 +390,7 @@ def main():
         with open(path, "rb") as f:
             instances = pickle.load(f)
 
-        out_file = os.path.join(eval_dir, f"cplns_{bm_name.lower()}.csv")
+        out_file = os.path.join(eval_dir, f"cplns_v2_{bm_name.lower()}.csv")
 
         # Resume support
         existing = set()
@@ -457,36 +458,36 @@ def main():
             }
 
             # ── CP-LNS experiments ────────────────────────────────────────────
-            for critical_target in CRITICAL_TARGETS:
-                label = MODE_LABELS[critical_target]
-                easy_pct      = int(EASY_RATIO * 100)
-                critical_pct  = int(critical_target * 100)
-                fixed_pct     = 100 - critical_pct - easy_pct
+            reconstruct_set, fixed_set = select_reconstruct_ops(b_sched, times_np, machines_np)
+            rc_count = len(reconstruct_set)
+            fx_count = len(fixed_set)
 
-                reconstruct_set, fixed_set = select_reconstruct_ops(
-                    b_sched, times_np, machines_np, critical_target
-                )
-                rc_count = len(reconstruct_set)
-                fx_count = len(fixed_set)
+            label = MODE_LABEL
+            ms, status, t_best = solve_cp_lns(
+                times_np, machines_np, b_sched,
+                reconstruct_set=reconstruct_set,
+                time_limit_s=tl,
+                bks=bks if bks > 0 else None
+            )
+            g = gap(ms, bks)
+            
+            initial_easy_pct = int(INITIAL_EASY_RATIO * 100)
+            final_easy_pct = int(FINAL_EASY_RATIO * 100)
+            cp_plus_initial = int(TARGET_CP_PLUS_EASY * 100)
+            critical_added = cp_plus_initial - initial_easy_pct
+            total_free_pct = cp_plus_initial + final_easy_pct
+            
+            print(
+                f"  {label} [InitialEasy={initial_easy_pct}%+CP={critical_added}%+FinalEasy={final_easy_pct}%={total_free_pct}% free, "
+                f"Fixed={100-total_free_pct}%, ops: recon={rc_count} fix={fx_count}]: "
+                f"MS={ms} ({t_best:.1f}s) Gap={g}% Status={status}",
+                flush=True
+            )
 
-                ms, status, t_best = solve_cp_lns(
-                    times_np, machines_np, b_sched,
-                    reconstruct_set=reconstruct_set,
-                    time_limit_s=tl,
-                    bks=bks if bks > 0 else None
-                )
-                g = gap(ms, bks)
-                print(
-                    f"  {label} [CP={critical_pct}%+Easy={easy_pct}%={critical_pct+easy_pct}% free, "
-                    f"Fixed={fixed_pct}%, ops: recon={rc_count} fix={fx_count}]: "
-                    f"MS={ms} ({t_best:.1f}s) Gap={g}% Status={status}",
-                    flush=True
-                )
-
-                row_data[f"CPLNS_{label}_MS"]     = ms
-                row_data[f"CPLNS_{label}_T_Best"]  = round(t_best, 1)
-                row_data[f"CPLNS_{label}_Status"]  = status
-                row_data[f"Gap_CPLNS_{label}"]     = g
+            row_data[f"CPLNS_{label}_MS"]     = ms
+            row_data[f"CPLNS_{label}_T_Best"]  = round(t_best, 1)
+            row_data[f"CPLNS_{label}_Status"]  = status
+            row_data[f"Gap_CPLNS_{label}"]     = g
 
             bm_rows.append(row_data)
             all_rows.append(row_data)
@@ -495,7 +496,7 @@ def main():
             
 
     # Summary file update
-    final_all_path = os.path.join(eval_dir, "cplns_all.csv")
+    final_all_path = os.path.join(eval_dir, "cplns_v2_all.csv")
     if os.path.exists(final_all_path) and only_bench:
         try:
             df_existing = pd.read_csv(final_all_path)
