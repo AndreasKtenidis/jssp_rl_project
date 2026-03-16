@@ -8,6 +8,8 @@ import os
 import time
 import numpy as np
 import torch
+import random
+from typing import Dict, List, Optional, Set, Tuple
 
 def _to_py_int(x):
     # Safely convert torch/numpy scalars to Python int
@@ -444,3 +446,440 @@ def run_cp_on_all(instances, save_gantt_dir=None, time_limit_s: float = 10.0):
         ms, _, status, t_best = solve_instance_your_version(inst["times"], inst["machines"], time_limit_s=time_limit_s)
         results.append({"instance_id": i, "cp_makespan": ms, "status": status, "time_to_best": t_best})
     return results
+
+
+def _as_numpy_2d(arr):
+    if isinstance(arr, torch.Tensor):
+        out = arr.detach().cpu().numpy()
+    elif isinstance(arr, np.ndarray):
+        out = arr
+    else:
+        out = np.asarray(arr)
+    if out.ndim != 2:
+        raise ValueError(f"Expected 2D array, got shape={out.shape}")
+    return out
+
+
+def schedule_makespan(schedule: List[dict]) -> int:
+    if not schedule:
+        return 0
+    return int(max(op["end_time"] for op in schedule))
+
+
+def validate_schedule(schedule, times, machines):
+    """Check JSSP schedule feasibility against precedence and machine capacity."""
+    times_np = _as_numpy_2d(times)
+    machines_np = _as_numpy_2d(machines)
+    num_jobs, num_ops = times_np.shape
+    total_ops = num_jobs * num_ops
+
+    if not schedule:
+        return False, "Empty schedule"
+    if len(schedule) != total_ops:
+        return False, f"Wrong op count: {len(schedule)} != {total_ops}"
+
+    lookup = {}
+    for entry in schedule:
+        key = (int(entry["job_id"]), int(entry["operation_index"]))
+        if key in lookup:
+            return False, f"Duplicate op {key}"
+        lookup[key] = entry
+
+    # All operations must exist exactly once, durations must match.
+    for j in range(num_jobs):
+        for o in range(num_ops):
+            key = (j, o)
+            if key not in lookup:
+                return False, f"Missing op {key}"
+            e = lookup[key]
+            st = int(e["start_time"])
+            en = int(e["end_time"])
+            if en < st:
+                return False, f"Negative duration at {key}"
+            expected = int(times_np[j, o])
+            if en - st != expected:
+                return False, f"Duration mismatch at {key}: {en-st} != {expected}"
+            if int(e["machine"]) != int(machines_np[j, o]):
+                return False, f"Machine mismatch at {key}"
+
+    # Job precedence.
+    for j in range(num_jobs):
+        for o in range(1, num_ops):
+            prev = lookup[(j, o - 1)]
+            cur = lookup[(j, o)]
+            if int(cur["start_time"]) < int(prev["end_time"]):
+                return False, f"Job precedence violation at {(j, o)}"
+
+    # Machine non-overlap.
+    by_machine: Dict[int, List[dict]] = {}
+    for e in schedule:
+        by_machine.setdefault(int(e["machine"]), []).append(e)
+    for m, ops in by_machine.items():
+        ops_sorted = sorted(
+            ops,
+            key=lambda x: (
+                int(x["start_time"]),
+                int(x["end_time"]),
+                int(x["job_id"]),
+                int(x["operation_index"]),
+            ),
+        )
+        for i in range(1, len(ops_sorted)):
+            prev = ops_sorted[i - 1]
+            cur = ops_sorted[i]
+            if int(cur["start_time"]) < int(prev["end_time"]):
+                return False, f"Machine overlap on m={m}"
+
+    return True, "OK"
+
+
+def _machine_sequences_from_schedule(schedule: List[dict]) -> Dict[int, List[Tuple[int, int]]]:
+    seq: Dict[int, List[dict]] = {}
+    for e in schedule:
+        seq.setdefault(int(e["machine"]), []).append(e)
+    out = {}
+    for m, ops in seq.items():
+        ops_sorted = sorted(
+            ops,
+            key=lambda x: (
+                int(x["start_time"]),
+                int(x["end_time"]),
+                int(x["job_id"]),
+                int(x["operation_index"]),
+            ),
+        )
+        out[m] = [(int(e["job_id"]), int(e["operation_index"])) for e in ops_sorted]
+    return out
+
+
+def _critical_blocks(schedule: List[dict], cp_ops: Set[Tuple[int, int]]) -> List[Tuple[int, List[Tuple[int, int]]]]:
+    """Consecutive critical-path operations per machine."""
+    machine_seq = _machine_sequences_from_schedule(schedule)
+    blocks: List[Tuple[int, List[Tuple[int, int]]]] = []
+    for m, op_keys in machine_seq.items():
+        block = []
+        for k in op_keys:
+            if k in cp_ops:
+                block.append(k)
+            else:
+                if len(block) >= 2:
+                    blocks.append((m, block.copy()))
+                block = []
+        if len(block) >= 2:
+            blocks.append((m, block.copy()))
+    return blocks
+
+
+def _sample_ops(rng: random.Random, pool: List[Tuple[int, int]], k: int) -> List[Tuple[int, int]]:
+    if not pool:
+        return []
+    if k >= len(pool):
+        return list(pool)
+    return rng.sample(pool, k)
+
+
+def select_free_operations(
+    schedule: List[dict],
+    times,
+    machines,
+    strategy: str = "critical_machines",
+    free_ratio: float = 0.10,
+    seed: int = 0,
+) -> Set[Tuple[int, int]]:
+    """
+    Pick operations to unfreeze in one LNS step.
+    Strategies:
+      - random_ops
+      - critical_machines
+      - critical_jobs
+      - critical_blocks
+      - ns_adjacent (N1-like)
+      - ns_jump (N5/N6-like)
+    """
+    times_np = _as_numpy_2d(times)
+    num_jobs, num_ops = times_np.shape
+    all_ops = [(j, o) for j in range(num_jobs) for o in range(num_ops)]
+    if not all_ops:
+        return set()
+
+    target = max(2, int(len(all_ops) * float(free_ratio)))
+    target = min(target, len(all_ops))
+    rng = random.Random(seed)
+
+    lookup = {(int(e["job_id"]), int(e["operation_index"])): e for e in schedule}
+    cp_ops = set(find_critical_path(schedule))
+    blocks = _critical_blocks(schedule, cp_ops)
+    machine_seq = _machine_sequences_from_schedule(schedule)
+
+    selected: Set[Tuple[int, int]] = set()
+    strategy = strategy.strip().lower()
+
+    if strategy == "random_ops":
+        return set(_sample_ops(rng, all_ops, target))
+
+    if strategy == "critical_machines":
+        ranked = []
+        for m, ops in machine_seq.items():
+            cp_count = sum(1 for k in ops if k in cp_ops)
+            ranked.append((cp_count, len(ops), m))
+        ranked.sort(reverse=True)
+        for _, _, m in ranked:
+            for k in machine_seq[m]:
+                selected.add(k)
+            if len(selected) >= target:
+                break
+
+    elif strategy == "critical_jobs":
+        cp_count_by_job = {j: 0 for j in range(num_jobs)}
+        completion_by_job = {j: 0 for j in range(num_jobs)}
+        for (j, o), e in lookup.items():
+            completion_by_job[j] = max(completion_by_job[j], int(e["end_time"]))
+            if (j, o) in cp_ops:
+                cp_count_by_job[j] += 1
+        ranked_jobs = sorted(
+            range(num_jobs),
+            key=lambda j: (cp_count_by_job[j], completion_by_job[j], j),
+            reverse=True,
+        )
+        for j in ranked_jobs:
+            for o in range(num_ops):
+                selected.add((j, o))
+            if len(selected) >= target:
+                break
+
+    elif strategy == "critical_blocks":
+        blocks_sorted = sorted(blocks, key=lambda x: len(x[1]), reverse=True)
+        for _, blk in blocks_sorted:
+            for k in blk:
+                selected.add(k)
+            if len(selected) >= target:
+                break
+
+    elif strategy == "ns_adjacent":
+        if blocks:
+            # N1-like: pick adjacent operations within a critical machine block.
+            _, blk = max(blocks, key=lambda x: len(x[1]))
+            if len(blk) >= 2:
+                idx = rng.randrange(len(blk) - 1)
+                selected.add(blk[idx])
+                selected.add(blk[idx + 1])
+                if idx - 1 >= 0:
+                    selected.add(blk[idx - 1])
+                if idx + 2 < len(blk):
+                    selected.add(blk[idx + 2])
+
+    elif strategy == "ns_jump":
+        if blocks:
+            # N5/N6-like: release the ends of a critical block (jump moves).
+            _, blk = max(blocks, key=lambda x: len(x[1]))
+            selected.add(blk[0])
+            selected.add(blk[-1])
+            if len(blk) > 2:
+                for k in blk[1:-1]:
+                    selected.add(k)
+
+    # Fill remaining slots: critical-path first, then all ops.
+    if len(selected) < target:
+        cp_pool = [k for k in cp_ops if k not in selected]
+        for k in _sample_ops(rng, cp_pool, target - len(selected)):
+            selected.add(k)
+    if len(selected) < target:
+        remain_pool = [k for k in all_ops if k not in selected]
+        for k in _sample_ops(rng, remain_pool, target - len(selected)):
+            selected.add(k)
+
+    return selected
+
+
+def solve_with_partial_fix(
+    times,
+    machines,
+    reference_schedule: List[dict],
+    free_ops: Set[Tuple[int, int]],
+    time_limit_s: float = 5.0,
+    **kwargs,
+):
+    """
+    CP subproblem for LNS:
+    - Fix all operations not in free_ops to the reference start times.
+    - Free operations are hinted but not fixed.
+    """
+    if not reference_schedule:
+        return None, [], "FAILED", 0.0
+
+    times_np = _as_numpy_2d(times)
+    machines_np = _as_numpy_2d(machines)
+    num_jobs, num_machines = times_np.shape
+    horizon = int(times_np.sum())
+
+    ref_lookup = {
+        (int(e["job_id"]), int(e["operation_index"])): {
+            "start_time": int(e["start_time"]),
+            "end_time": int(e["end_time"]),
+        }
+        for e in reference_schedule
+    }
+    if len(ref_lookup) != num_jobs * num_machines:
+        return None, [], "FAILED", 0.0
+
+    model = cp_model.CpModel()
+    jobs_starts, jobs_ends, intervals = {}, {}, {}
+
+    for j in range(num_jobs):
+        for o in range(num_machines):
+            dur = _to_py_int(times_np[j, o])
+            s = model.NewIntVar(0, horizon, f"s_{j}_{o}")
+            e = model.NewIntVar(0, horizon, f"e_{j}_{o}")
+            itv = model.NewIntervalVar(s, dur, e, f"i_{j}_{o}")
+            jobs_starts[(j, o)] = s
+            jobs_ends[(j, o)] = e
+            intervals[(j, o)] = itv
+
+    # Job precedence.
+    for j in range(num_jobs):
+        for o in range(1, num_machines):
+            model.Add(jobs_starts[(j, o)] >= jobs_ends[(j, o - 1)])
+
+    # Machine capacity.
+    machine_intervals: Dict[int, List] = {}
+    for j in range(num_jobs):
+        for o in range(num_machines):
+            m = int(machines_np[j, o])
+            machine_intervals.setdefault(m, []).append(intervals[(j, o)])
+    for _, ints in machine_intervals.items():
+        model.AddNoOverlap(ints)
+
+    free_ops = set((int(j), int(o)) for (j, o) in free_ops)
+    for j in range(num_jobs):
+        for o in range(num_machines):
+            key = (j, o)
+            ref_start = ref_lookup[key]["start_time"]
+            if key in free_ops:
+                model.AddHint(jobs_starts[key], ref_start)
+            else:
+                model.Add(jobs_starts[key] == ref_start)
+
+    ref_makespan = schedule_makespan(reference_schedule)
+    makespan = model.NewIntVar(0, horizon, "makespan")
+    model.AddMaxEquality(makespan, [jobs_ends[(j, num_machines - 1)] for j in range(num_jobs)])
+    if ref_makespan > 0:
+        model.Add(makespan <= int(ref_makespan))
+    model.Minimize(makespan)
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit_s)
+    solver.parameters.num_search_workers = 8
+    bks = kwargs.get("bks", None)
+    cb = JSSPSolutionCallback(makespan, bks=bks)
+    status = solver.Solve(model, cb)
+
+    final_status = "FEASIBLE"
+    if status == cp_model.OPTIMAL:
+        final_status = "OPTIMAL"
+    elif cb.status == "BKS_REACHED":
+        final_status = "BKS_REACHED"
+    elif cb.status == "BKS_BEATEN":
+        final_status = "BKS_BEATEN"
+    elif status in (cp_model.INFEASIBLE, cp_model.MODEL_INVALID):
+        final_status = "FAILED"
+
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        sched = []
+        for j in range(num_jobs):
+            for o in range(num_machines):
+                sched.append(
+                    {
+                        "job_id": j,
+                        "operation_index": o,
+                        "machine": int(machines_np[j, o]),
+                        "start_time": int(solver.Value(jobs_starts[(j, o)])),
+                        "end_time": int(solver.Value(jobs_ends[(j, o)])),
+                    }
+                )
+        return int(solver.ObjectiveValue()), sched, final_status, cb.time_to_best
+
+    return None, [], final_status, 0.0
+
+
+def available_lns_pipelines() -> List[str]:
+    return ["lns_machine", "lns_job", "lns_random", "ns_lns_mix"]
+
+
+def run_lns_refinement(
+    times,
+    machines,
+    initial_schedule: List[dict],
+    pipeline: str = "ns_lns_mix",
+    iterations: int = 8,
+    free_ratio: float = 0.10,
+    step_time_s: float = 6.0,
+    seed: int = 0,
+    **kwargs,
+):
+    """
+    Iterative local-search refinement using CP-LNS neighborhoods.
+    Returns: (best_ms, best_schedule, history)
+    """
+    if not initial_schedule:
+        return None, [], []
+
+    valid, _ = validate_schedule(initial_schedule, times, machines)
+    if not valid:
+        return None, [], []
+
+    pipeline = pipeline.strip().lower()
+    strategy_seq = {
+        "lns_machine": ["critical_machines"],
+        "lns_job": ["critical_jobs"],
+        "lns_random": ["random_ops"],
+        # NS-inspired (critical-block adjacent + jump) plus CP-LNS intensification
+        "ns_lns_mix": ["ns_adjacent", "ns_jump", "critical_blocks", "critical_machines"],
+    }.get(pipeline)
+    if strategy_seq is None:
+        raise ValueError(f"Unknown pipeline '{pipeline}'. Available: {available_lns_pipelines()}")
+
+    best_schedule = list(initial_schedule)
+    best_ms = schedule_makespan(best_schedule)
+    history = []
+
+    for it in range(max(1, int(iterations))):
+        strategy = strategy_seq[it % len(strategy_seq)]
+        free_ops = select_free_operations(
+            best_schedule,
+            times,
+            machines,
+            strategy=strategy,
+            free_ratio=float(free_ratio),
+            seed=seed + it,
+        )
+        cand_ms, cand_sched, cand_status, cand_t = solve_with_partial_fix(
+            times,
+            machines,
+            reference_schedule=best_schedule,
+            free_ops=free_ops,
+            time_limit_s=float(step_time_s),
+            **kwargs,
+        )
+
+        accepted = False
+        if cand_ms is not None and cand_ms < best_ms and cand_sched:
+            valid, _ = validate_schedule(cand_sched, times, machines)
+            if valid:
+                best_ms = int(cand_ms)
+                best_schedule = cand_sched
+                accepted = True
+
+        history.append(
+            {
+                "iter": it + 1,
+                "strategy": strategy,
+                "free_ops": len(free_ops),
+                "candidate_ms": cand_ms,
+                "candidate_status": cand_status,
+                "candidate_time_to_best": round(float(cand_t), 4),
+                "accepted": accepted,
+                "best_ms_after_iter": best_ms,
+            }
+        )
+
+    return best_ms, best_schedule, history

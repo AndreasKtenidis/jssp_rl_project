@@ -53,3 +53,5 @@ checkpoints/
 saved/Synthetic_instances_100x20_5000.pkl
 Contribution_Title.pdf
 
+train.log
+train2.log
