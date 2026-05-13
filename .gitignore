@@ -25,6 +25,12 @@ env/
 venv/
 ENV/
 
+# Local history / editor backups
+.history/
+
+# Virtual environments
+venv_gpu/
+
 # Jupyter
 .ipynb_checkpoints
 
@@ -48,3 +54,11 @@ saved/Synthetic_instances_*.pkl
 !jssp_rl/saved/synthetic_500_instances.pkl
 !jssp_rl/outputs/models/*.pt
 !jssp_rl/saved/benchmark_bks.json
+
+# Generated images
+*.png
+*.jpg
+*.jpeg
+
+# Pickle/cache files if generated
+*.pkl
