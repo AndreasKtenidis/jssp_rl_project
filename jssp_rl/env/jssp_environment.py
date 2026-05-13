@@ -107,8 +107,6 @@ class JSSPEnvironment:
 
         return max(job_remaining)
 
-
-
     def step(self, action, use_clb_reward=False):
         # --- 0) Bounds guard ---
         if not isinstance(action, int):

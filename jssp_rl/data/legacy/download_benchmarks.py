@@ -149,7 +149,8 @@ def parse_or_library_file(filepath):
 
 
 def main():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    base_dir = os.path.dirname(data_dir)
     saved_dir = os.path.join(base_dir, "saved")
     os.makedirs(saved_dir, exist_ok=True)
     

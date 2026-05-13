@@ -14,7 +14,7 @@ import json
 import pickle
 import torch
 import pandas as pd
-from data.dataset import JSSPDataset
+from data.legacy.dataset import JSSPDataset
 from models.Hetero_actor_critic_ppo import ActorCriticPPO
 from env.jssp_environment import JSSPEnvironment
 from utils.logging_utils import plot_gantt_chart

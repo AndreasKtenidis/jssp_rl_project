@@ -8,7 +8,7 @@ import torch
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-from data.dataset import JSSPDataset, split_dataset, get_dataloaders
+from data.legacy.dataset import JSSPDataset, split_dataset, get_dataloaders
 from env.jssp_environment import JSSPEnvironment
 from models.Hetero_actor_critic_ppo import ActorCriticPPO
 # from models.gnn import GNNWithAttention

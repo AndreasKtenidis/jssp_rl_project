@@ -5,7 +5,7 @@ import torch
 import subprocess
 import pandas as pd
 import os
-from data.dataset import JSSPDataset, split_dataset, get_dataloaders
+from data.legacy.dataset import JSSPDataset, split_dataset, get_dataloaders
 from models.gnn import GNNWithAttention
 from jssp_rl_project.jssp_rl.models.actor_critic_a2c import Actor, Critic
 from env.jssp_environment import JSSPEnvironment
