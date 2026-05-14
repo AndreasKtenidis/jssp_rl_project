@@ -67,9 +67,9 @@ class FJSSPEnvironment:
         for job_id, job in enumerate(self.instance):
             for op_idx, _ in enumerate(job):
                 op_id = self.job_op_to_op[(job_id, op_idx)]
-                if self.state[op_id] == 1:
+                if self.state[op_id] == 1: # Find first unscheduled operation of this job
                     continue
-                if op_idx == 0:
+                if op_idx == 0: # If it is the first operation, it is available
                     available.extend(self.op_to_actions[op_id])
                 else:
                     prev_op_id = self.job_op_to_op[(job_id, op_idx - 1)]
@@ -77,12 +77,22 @@ class FJSSPEnvironment:
                         available.extend(self.op_to_actions[op_id])
                 break
         return available
+    
+    def get_action_mask(self):
+        mask = torch.zeros(self.num_actions, dtype=torch.bool, device=self.device)
+        available_actions = self.get_available_actions()
+        if available_actions:
+            mask[available_actions] = True
+        return mask
 
     def step(self, action):
         if not isinstance(action, int):
             action = int(action)
         if action < 0 or action >= self.num_actions:
             print(f"[DEBUG] Invalid action index {action} (out of bounds)")
+            return self.state, -200.0, False, self.get_makespan()
+        if action not in self.get_available_actions():
+            print(f"[DEBUG] Invalid: action {action} is not currently available")
             return self.state, -200.0, False, self.get_makespan()
 
         op_id, machine_id, duration = self.decode_action(action)
@@ -114,10 +124,10 @@ class FJSSPEnvironment:
 
         makespan = self.get_makespan()
         done = bool(self.state.sum().item() == self.num_operations)
-        reward = -(makespan - prev_makespan) if self.use_shaping_rewards else 0.0
+        reward = -makespan if done else -(makespan - prev_makespan)
 
         return self.state, float(reward), done, float(makespan)
-
+    
     def get_makespan(self):
         return float(self.op_completion_times.max().item())
 
